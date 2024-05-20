@@ -9,6 +9,7 @@
 
 
 #include "include/plin_index.h"
+#include "include/message.h"
 
 using TestIndex = PlinIndex;
 // PMAllocator * galc;
@@ -165,58 +166,28 @@ void run_search_test_client(int sock, TestIndex& test_index, _key_t* keys, _payl
     // std::cout << "wrong count: " << count << std::endl;
     // std::cout << "false count: " << false_count << std::endl;
 
-
-
-
-
-
-
-
-int main() 
-{
-    // size_t number = 1e7;
-    // std::normal_distribution<_key_t> key_dist(0, 2e8);
-    // // std::uniform_real_distribution<double> key_dist(0.0, 2.0e8);
-    // std::uniform_int_distribution<_payload_t> payload_dist(0, 1e8);
-    // std::mt19937 key_gen(123);
-    // std::mt19937 payload_gen(123);
-    // _key_t* keys = new _key_t[number];
-    // _payload_t* payloads = new _payload_t[number];
-
-    // // Generate keys and payloads
-    // for(size_t i = 0; i < number; i++){
-    //     // keys[i] = key_dist(key_gen);
-    //     keys[i] = i;
-    //     payloads[i] = payload_dist(payload_gen);
-
-    //     // if (keys[i] == -2.1193e+08)
-    //     //     std::cout << "Find empty!" << std::endl;
-    // }
-    size_t number = 1e7;
-    // std::uniform_int_distribution<uint64_t> key_dist(0, 2e8);
-    // std::uniform_int_distribution<_payload_t> payload_dist(0, 1e8);
-
-    // std::mt19937 key_gen(123);   
+void initialize_data(size_t number, _key_t*& keys, _payload_t*& payloads) {
     std::mt19937 gen(456); 
     std::uniform_real_distribution<double> dist(10.0, 100.0);
 
-    _key_t* keys = new _key_t[number];      // 动态分配数组存储keys
-    _payload_t* payloads = new _payload_t[number];
+    keys = new _key_t[number];
+    payloads = new _payload_t[number];
 
     _key_t key = 0;
-    _payload_t payload = 0;
-    for (int i = 0; i < number; i ++ )
-    {
+    for (int i = 0; i < number; i++) {
         key += dist(gen);
         keys[i] = key;
         payloads[i] = key;
     }
 
+    std::cout << "prepared" << std::endl;
+}
+
+int start_client(int port) {
     int sock = 0, valread;
     struct sockaddr_in serv_addr;
     char buffer[1024] = {0};
     std::string ipAddress = "127.0.0.1"; // 服务器的 IP 地址
-    int port = 8080;
 
     if ((sock = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
         std::cout << "Socket creation error" << std::endl;
@@ -237,32 +208,91 @@ int main()
         return -1;
     }
 
-    // get PLIN cache
-    const char* message = "META";
+    return sock;
+}
 
-    if (send(sock, message, strlen(message), 0) == -1) {
-        std::cerr << "Error sending data\n";
-        close(sock);
-        return 1;
+TestIndex GetMeta(int server_sock) {
+
+    Client_message msg;
+    TestIndex testindex;
+
+    sendClientMessage(server_sock, msg);
+        
+    // 首先接收数据的大小信息
+    uint32_t dataSize = 0;
+    int bytesRead = recv(server_sock, &dataSize, sizeof(dataSize), 0);
+    if (bytesRead != sizeof(dataSize)) {
+        std::cerr << "Failed to receive data size" << std::endl;
+        close(server_sock);
+        return testindex;
     }
 
-    std::vector<char> receivedData;
-    while (true) {
-        char buf[256];
-        int bytesRead = recv(sock, buf, 256, 0);
-        if (bytesRead <= 0) break;
-        receivedData.insert(receivedData.end(), buf, buf + bytesRead);
+    std::cout << "Data size: " << dataSize << std::endl;
+
+    std::vector<char> receivedData(dataSize);
+
+    // 现在接收实际的数据
+    char* bufPtr = receivedData.data();
+    uint32_t bytesToReceive = dataSize;
+    while (bytesToReceive > 0) {
+        int bytesReceived = recv(server_sock, bufPtr, bytesToReceive, 0);
+        if (bytesReceived <= 0) {
+            // 接收失败或连接关闭
+            std::cerr << "Failed to receive data or connection closed" << std::endl;
+            break;
+        }
+        bytesToReceive -= bytesReceived;
+        bufPtr += bytesReceived;
     }
 
     std::cout << "Received data size: " << receivedData.size() << " bytes" << std::endl;
-
-    TestIndex testindex;
-
+        
+    
     testindex.deserializePlinIndex(receivedData);
+
+    return testindex;
+}
+
+
+
+
+int main() 
+{
+
+    size_t number = 1e7;
+    // std::mt19937 gen(456); 
+    // std::uniform_real_distribution<double> dist(10.0, 100.0);
+
+    _key_t* keys = new _key_t[number];      // 动态分配数组存储keys
+    _payload_t* payloads = new _payload_t[number];
+
+    // _key_t key = 0;
+    // _payload_t payload = 0;
+    // for (int i = 0; i < number; i ++ )
+    // {
+    //     key += dist(gen);
+    //     keys[i] = key;
+    //     payloads[i] = key;
+    // }
+
+    initialize_data(number, keys, payloads);
+
+    int server_sock = start_client(8080);
+
+    // get PLIN cache
+
+    // META
+
+    TestIndex testindex = GetMeta(server_sock);
+    
+
+
 
     testindex.PrintInfo();
 
-    run_search_test_client(sock, testindex, keys, payloads, number);
+    while(true) {}
 
-    close(sock);
+    // run_search_test_client(sock, testindex, keys, payloads, number);
+
+    close(server_sock);
 }

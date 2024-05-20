@@ -104,52 +104,18 @@ clean/fast: clean
 # Prepare targets for installation.
 preinstall: all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 preinstall
-.PHONY : preinstall/home/hadoop/Desktop/PLIN/home/hadoop/Desktop/PLIN/include/plin_index.h:195:74: error: expected primary-expression before ‘>’ token
-  195 |             plin_->right_buffer = new btree::btree_map<_key_t, _payload_t>();
-      |                                                                          ^
-/home/hadoop/Desktop/PLIN/include/plin_index.h:195:76: error: expected primary-expression before ‘)’ token
-  195 |             plin_->right_buffer = new btree::btree_map<_key_t, _payload_t>();home/hadoop/Desktop/PLIN/include/plin_index.h:195:74: error: expected primary-expression before ‘>’ token
-  195 |             plin_->right_buffer = new btree::btree_map<_key_t, _payload_t>();
-      |                                                                          ^
-/home/hadoop/Desktop/PLIN/include/plin_index.h:195:76: error: expected primary-expression before ‘)’ token
-  195 |             plin_->right_buffer = new btree::btree_map<_key_t, _payload_t>();include/plin_index.h:195:74: error: expected primary-expression before ‘>’ token
-  195 |             plin_->right_buffer = new btree::btree_map<_key_t, _payload_t>();
-      |                                                                          ^
-/home/hadoop/Desktop/PLIN/include/plin_index.h:195:76: error: expected primary-expression before ‘)’ token
-  195 |             plin_->right_buffer = new btree::btree_map<_key_t, _payload_t>();
+.PHONY : preinstall
 
-# Prepare targets for installation./home/hadoop/Desktop/PLIN/include/plin_index.h:195:74: error: expected primary-expression before ‘>’ token
-  195 |             plin_->right_buffer = new btree::btree_map<_key_t, _payload_t>();
-      |                                                                          ^
-/home/hadoop/Desktop/PLIN/include/plin_index.h:195:76: error: expected primary-expression before ‘)’ token
-  195 |             plin_->right_buffer = new btree::btree_map<_key_t, _payload_t>();
-preinstall/fast:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makef/home/hadoop/Desktop/PLIN/include/plin_index.h:195:74: error: expected primary-expression before ‘>’ token
-  195 |             plin_->right_buffer = new btree::btree_map<_key_t, _payload_t>();
-      |                                                                          ^
-/home/hadoop/Desktop/PLIN/include/plin_index.h:195:76: error: expected primary-expression before ‘)’ token
-  195 |             plin_->right_buffer = new btree::btree_map<_key_t, _payload_t>();ile2 preinstall
-.PHONY : preinstall/fast/home/hadoop/Desktop/PLIN/include/plin_index.h:195:74: error: expected primary-expression before ‘>’ token
-  195 |             plin_->right_buffer = new btree::btree_map<_key_t, _payload_t>();
-      |                                                                          ^
-/home/hadoop/Desktop/PLIN/include/plin_index.h:195:76: error: expected primary-expression before ‘)’ token
-  195 |             plin_->right_buffer = new btree::btree_map<_key_t, _payload_t>();
+
+# Prepare targets for installation.
 
 # clear depends
 depend:
 	$(CMAKE_COMMAND) -S$(CMAKE_SOURCE_DIR) -B$(CMAKE_BINARY_DIR) --check-build-system CMakeFiles/Makefile.cmake 1
 .PHONY : depend
-/home/hadoop/Desktop/PLIN/include/plin_index.h:195:74: error: expected primary-expression before ‘>’ token
-  195 |             plin_->right_buffer = new btree::btree_map<_key_t, _payload_t>();
-      |                                                                          ^
-/home/hadoop/Desktop/PLIN/include/plin_index.h:195:76: error: expected primary-expression before ‘)’ token
-  195 |             plin_->right_buffer = new btree::btree_map<_key_t, _payload_t>();
+
 #=============================================================================
-# Target rules for targets named/home/hadoop/Desktop/PLIN/include/plin_index.h:195:74: error: expected primary-expression before ‘>’ token
-  195 |             plin_->right_buffer = new btree::btree_map<_key_t, _payload_t>();
-      |                                                                          ^
-/home/hadoop/Desktop/PLIN/include/plin_index.h:195:76: error: expected primary-expression before ‘)’ token
-  195 |             plin_->right_buffer = new btree::btree_map<_key_t, _payload_t>(); test_server
+# Target rules for targets named/
 
 # Build rule for target.
 test_server: cmake_check_build_system

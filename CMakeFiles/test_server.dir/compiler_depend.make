@@ -447,8 +447,12 @@ CMakeFiles/test_server.dir/test_server.cpp.o: test_server.cpp \
   /usr/include/libpmem.h \
   include/spinlock.h \
   /usr/include/c++/9/thread \
-  include/newallocator.h
+  include/newallocator.h \
+  include/message.h \
+  /usr/include/arpa/inet.h
 
+
+/usr/include/arpa/inet.h:
 
 /usr/include/libpmem.h:
 
@@ -767,6 +771,8 @@ include/parameters.h:
 /usr/include/c++/9/bits/uses_allocator.h:
 
 /usr/include/c++/9/tr1/hypergeometric.tcc:
+
+include/message.h:
 
 /usr/include/c++/9/bits/stl_bvector.h:
 
