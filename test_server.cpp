@@ -114,16 +114,21 @@ void handle_connection(int socket) {
 
 void initialize_data(size_t number, _key_t*& keys, _payload_t*& payloads) {
     std::mt19937 gen(456); 
-    std::uniform_real_distribution<double> dist(10.0, 100.0);
+    // std::uniform_real_distribution<double> dist(10.0, 100.0);
+
+    std::normal_distribution<_key_t> key_dist(0, 1e8);
+    std::uniform_int_distribution<_payload_t> payload_dist(0,1e8);
 
     keys = new _key_t[number];
     payloads = new _payload_t[number];
 
     _key_t key = 0;
     for (int i = 0; i < number; i++) {
-        key += dist(gen);
-        keys[i] = key;
-        payloads[i] = key;
+        // key += dist(gen);
+        // keys[i] = key;
+        // payloads[i] = key;
+        keys[i] = key_dist(gen);
+        payloads[i] = payload_dist(gen);
     }
     std::sort(keys, keys + number);
     std::cout << "Data initialized and sorted successfully." << std::endl;
@@ -137,7 +142,20 @@ void prependSizeToBuffer(std::vector<char>& buffer) {
     buffer.insert(buffer.begin(), sizeBytes.begin(), sizeBytes.end());
 }
 
-void handle_client(int client_socket, std::vector<char>& buffer) {
+int sendPayload(int sock, _payload_t payload) {
+    const char* buffer = reinterpret_cast<const char*>(&payload);
+    size_t payloadSize = sizeof(_payload_t); // 获取_payload_t类型的大小
+
+    ssize_t bytesSent = send(sock, buffer, payloadSize, 0); // 发送_payload
+    if (bytesSent == -1) {
+        std::cerr << "Failed to send payload" << std::endl;
+        return -1; // 发送失败
+    }
+
+    return 0; // 发送成功
+}
+
+void handle_client(TestIndex& testIndex, int client_socket, std::vector<char>& buffer) {
 
     std::cout << "thread: " << client_socket << std::endl;
 
@@ -146,6 +164,34 @@ void handle_client(int client_socket, std::vector<char>& buffer) {
         if (receivedMsg.type == Client_message::META) {
             send(client_socket, buffer.data(), buffer.size(), 0);
 
+        }
+        else if (receivedMsg.type == Client_message::LOOKUP) {
+            std::vector<int> leaf_path = receivedMsg.data.leaf_path;
+            _key_t key = receivedMsg.key;
+            // std::cout << "key: " << key << std::endl;
+            _payload_t payload = testIndex.find_Payload(leaf_path, key);
+
+            // _payload_t ans;
+            // bool found = testIndex.find(key, ans);
+            // std::cout << "found: " << found << std::endl;
+
+            
+            sendPayload(client_socket, payload);
+
+        }
+        else if (receivedMsg.type == Client_message::INVALID) {
+            break;
+        }
+        else if (receivedMsg.type == Client_message::RAW_KEY) {
+
+            
+
+            _key_t key = receivedMsg.key;
+            std::cout << "key: " << key << std::endl;
+            _payload_t payload;
+            testIndex.find(key, payload);
+
+            sendPayload(client_socket, payload);
         }
 
     }
@@ -166,7 +212,7 @@ void handle_client(int client_socket, std::vector<char>& buffer) {
     close(client_socket);
 }
 
-void start_server(int port, std::vector<char>& buffer) {
+void start_server(int port, std::vector<char>& buffer, TestIndex& testIndex) {
     int server_fd, client_socket;
     struct sockaddr_in address;
     int opt = 1;
@@ -205,13 +251,14 @@ void start_server(int port, std::vector<char>& buffer) {
             continue;
         }
 
-        std::thread(handle_client, client_socket, std::ref(buffer)).detach();
+        std::thread(handle_client, std::ref(testIndex), client_socket, std::ref(buffer)).detach();
+        
     }
     close(server_fd);
 }
 
 void test() {
-    size_t number = 1e7;
+    size_t number = 1e8;
     _key_t* keys = nullptr;
     _payload_t* payloads = nullptr;
 
@@ -220,11 +267,13 @@ void test() {
     test_index.bulk_load(keys, payloads, number);
     test_index.PrintInfo();
 
+    run_search_test(test_index, keys, payloads, number);
+
     std::vector<char> buffer;
     test_index.serializePlinIndex(buffer);
     prependSizeToBuffer(buffer);
 
-    start_server(8080, buffer);
+    start_server(8080, buffer, test_index);
 }
 
 int main() {

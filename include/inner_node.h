@@ -88,13 +88,15 @@ public:
     }
 
     void traverseAllInnerSlots(std::function<void(const InnerSlot&)> action) {
+        std::cout << "level: " << inner_node.level << std::endl;
         for (uint64_t slot = 0; slot < inner_node.block_number * InnerSlotsPerBlock; ++slot) {
             if (inner_slots[slot].min_key != FREE_FLAG) {
                 action(inner_slots[slot]);  // 应用传入的函数操作
                 
                 // 如果当前slot指向的是另一个InnerNode，则递归遍历
                 if (inner_slots[slot].type()) {  
-                    reinterpret_cast<InnerNode*>(inner_slots[slot].ptr)->traverseAllInnerSlots(action);
+                    std::cout << "traverse recursively" << std::endl;
+                    (reinterpret_cast<InnerNode*>(inner_slots[slot].ptr))->traverseAllInnerSlots(action);
                 }
             }
         }
@@ -117,6 +119,7 @@ public:
         // 递归序列化子节点
         for (uint64_t i = 0; i < inner_node.block_number * InnerNode::InnerSlotsPerBlock; ++i) {
             if (inner_slots[i].type()) {  // 如果是内部节点
+                std::cout << "serializeInnerNode recursively " << std::endl;
                 (reinterpret_cast<InnerNode*>(inner_slots[i].ptr))->serializeInnerNode(buffer);
             }
         }
@@ -159,6 +162,10 @@ public:
                 }
             }
         }
+    }
+
+    InnerSlot * get_Slot (uint64_t slot) {
+        return &inner_slots[slot];
     }
 
     InnerSlot * find_leaf_node (_key_t key, const InnerSlot * accelerator) {

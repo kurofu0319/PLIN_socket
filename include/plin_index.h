@@ -323,7 +323,13 @@ public:
     }
 
     void PrintInfo()
-    {
+    {   
+        std::cout << "Plin Info: " << std::endl;
+
+        std::cout << "level: " << plin_->level << std::endl;
+        std::cout << "leaf number: " << plin_->leaf_number << std::endl;
+        std::cout << "orphan node number: " << plin_->orphan_number << std::endl;
+
         int i;
         
         for (i = 0; i < plin_->root_number; i++)
@@ -332,7 +338,7 @@ public:
             if (acclerater->type())
             {
                 std::cout << "root: " << i << std::endl;
-                reinterpret_cast<InnerNode *>(acclerater->ptr)->traverseAllInnerSlots([](const InnerSlot& slot) {
+                (reinterpret_cast<InnerNode *>(acclerater->ptr))->traverseAllInnerSlots([](const InnerSlot& slot) {
                     std::cout <<"Slope: " << slot.slope << ", Intercept: " << slot.intercept << ", min key: " << slot.min_key << std::endl;
                 });
             }
@@ -365,17 +371,18 @@ public:
         offset += sizeof(plin_->root_number);
         memcpy(buffer.data() + offset, &plin_->min_key, sizeof(plin_->min_key));
 
-
-
-        
-
-
         // Serialize roots and logs
         for (int i = 0; i < plin_->root_number; ++i) {
             InnerSlot* acclerater = &plin_->roots[i];
             serializeInnerSlot(*acclerater, buffer);
-            if (acclerater->type())
+
+            std::cout << "serializeInnerSlot " << std::endl;
+
+            if (acclerater->type()) {
+                std::cout << "serializeInnerNode " << std::endl;
                 (reinterpret_cast<InnerNode *>(acclerater->ptr))->serializeInnerNode(buffer);
+            }
+                
         }
     }
 
@@ -629,6 +636,39 @@ public:
             
         }
             
+    }
+
+    _payload_t find_Payload(std::vector<int> leaf_path,_key_t key) {
+
+        int i = 0;
+        _payload_t ans;
+        InnerSlot *accelerator = &plin_->roots[leaf_path[i]];
+        i ++ ;
+
+        while (accelerator->type() && i < leaf_path.size())
+        {
+            //std::cout << "find_leaf_node" << std::endl;
+            accelerator = (reinterpret_cast<InnerNode *>(accelerator->ptr))->get_Slot(leaf_path[i]);
+            i ++ ;
+        }
+
+        while (true) {
+            if (accelerator->check_read_lock())
+            {
+                //std::cout << "find" << std::endl;
+                uint32_t ret = (reinterpret_cast<LeafNode *>(accelerator->ptr))->find(key, ans, plin_->global_version, accelerator);
+                if (ret == 1)
+                {
+                    // std::cout << "ret: 1, Found!" << std::endl;
+                }
+                else if (ret == 0)
+                {
+                    std::cout << "ret: 0, not Found!" << std::endl;
+                }
+
+                return ans;
+            }
+        }
     }
 
     void range_query(_key_t lower_bound, _key_t upper_bound, std::vector<std::pair<_key_t, _payload_t>> &answers)
