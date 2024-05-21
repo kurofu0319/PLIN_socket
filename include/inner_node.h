@@ -72,6 +72,10 @@ public:
         accelerator.set_type(1);
         accelerator.init_lock();
     }
+
+    InnerNode(const std::vector<char>& buffer, size_t &offset) {
+        deserializeInnerNode(buffer, offset);
+    }
     
     ~InnerNode() {}
 
@@ -89,6 +93,7 @@ public:
 
     void traverseAllInnerSlots(std::function<void(const InnerSlot&)> action) {
         std::cout << "level: " << inner_node.level << std::endl;
+        std::cout << "block number: " << inner_node.block_number << std::endl;
         for (uint64_t slot = 0; slot < inner_node.block_number * InnerSlotsPerBlock; ++slot) {
             if (inner_slots[slot].min_key != FREE_FLAG) {
                 action(inner_slots[slot]);  // 应用传入的函数操作
@@ -110,19 +115,25 @@ public:
         const char* metadata_ptr = reinterpret_cast<const char*>(&inner_node);
         buffer.insert(buffer.end(), metadata_ptr, metadata_ptr + metadata_size);
 
-        // 序列化slots
-        size_t slots_size = inner_node.block_number * InnerNode::InnerSlotsPerBlock * sizeof(InnerSlot);
+        // // 序列化slots
+        // size_t slots_size = inner_node.block_number * InnerNode::InnerSlotsPerBlock * sizeof(InnerSlot);
 
-        const char* slots_ptr = reinterpret_cast<const char*>(inner_slots);
-        buffer.insert(buffer.end(), slots_ptr, slots_ptr + slots_size);
+        // const char* slots_ptr = reinterpret_cast<const char*>(inner_slots);
+        // buffer.insert(buffer.end(), slots_ptr, slots_ptr + slots_size);
 
         // 递归序列化子节点
         for (uint64_t i = 0; i < inner_node.block_number * InnerNode::InnerSlotsPerBlock; ++i) {
-            if (inner_slots[i].type()) {  // 如果是内部节点
+            
+            serializeInnerSlot(inner_slots[i], buffer);
+
+            if (inner_slots[i].type() && inner_slots[i].min_key != FREE_FLAG) {  // 如果是内部节点
+                std::cout << "inner node: " << i << std::endl;
                 std::cout << "serializeInnerNode recursively " << std::endl;
-                (reinterpret_cast<InnerNode*>(inner_slots[i].ptr))->serializeInnerNode(buffer);
+                reinterpret_cast<InnerNode*>(inner_slots[i].ptr)->serializeInnerNode(buffer);
             }
         }
+
+        std::cout << "serialize offset: " << buffer.size() << std::endl;
     }
 
     void deserializeInnerNode(const std::vector<char>& buffer, size_t& offset) {
@@ -134,18 +145,18 @@ public:
 
         // 反序列化元数据
         memcpy(&inner_node, buffer.data() + offset, sizeof(InnerNodeMetadata));
-        offset += sizeof(inner_node);
+        offset += sizeof(InnerNodeMetadata);
 
-        size_t slots_size = inner_node.block_number * InnerSlotsPerBlock * sizeof(InnerSlot);
+        // size_t slots_size = inner_node.block_number * InnerSlotsPerBlock * sizeof(InnerSlot);
 
         // 检查是否有足够的数据来反序列化所有 slots
-        if (offset + slots_size > buffer.size()) {
-            std::cerr << "Buffer overflow when trying to read slots." << std::endl;
-            return;
-        }
+        // if (offset + slots_size > buffer.size()) {
+        //     std::cerr << "Buffer overflow when trying to read slots." << std::endl;
+        //     return;
+        // }
 
         // 反序列化 slots 数据
-        memcpy(inner_slots, buffer.data() + offset, slots_size);
+        
 
         // for (int i = 0; i < metadata.block_number * InnerSlotsPerBlock; i ++ )
         //     inner_slots[i] = slots[i];
@@ -154,14 +165,20 @@ public:
         
 
         // 反序列化每个 slot 的指针，如果是 InnerNode 类型
-        for (uint64_t i = 0; i < inner_node.block_number * InnerSlotsPerBlock; ++i) {
-            if (inner_slots[i].type()) {
+        for (uint64_t i = 0; i < inner_node.block_number * InnerNode::InnerSlotsPerBlock; ++i) {
+            // memcpy(&inner_slots[i], buffer.data() + offset, sizeof(InnerSlot));
+            // offset += sizeof(InnerSlot);
+            deserializeInnerSlot(inner_slots[i], buffer, offset);
+
+            if (inner_slots[i].type() && inner_slots[i].min_key != FREE_FLAG) {
                 // TODO:
                 if (inner_slots[i].ptr != nullptr) {
                     reinterpret_cast<InnerNode*>(inner_slots[i].ptr)->deserializeInnerNode(buffer, offset);
                 }
             }
         }
+
+        std::cout << "deserialize offset: " << offset << std::endl;
     }
 
     InnerSlot * get_Slot (uint64_t slot) {

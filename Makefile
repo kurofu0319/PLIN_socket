@@ -106,8 +106,10 @@ preinstall: all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 preinstall
 .PHONY : preinstall
 
-
 # Prepare targets for installation.
+preinstall/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 preinstall
+.PHONY : preinstall/fast
 
 # clear depends
 depend:
@@ -115,7 +117,7 @@ depend:
 .PHONY : depend
 
 #=============================================================================
-# Target rules for targets named/
+# Target rules for targets named test_server
 
 # Build rule for target.
 test_server: cmake_check_build_system

@@ -16,5 +16,5 @@ add_executable(test_client test_client.cpp)
 
 # 链接库
 # 如果服务器和客户端都需要链接到相同的库
-target_link_libraries(test_server -lpmemobj -pthread)
-target_link_libraries(test_client -lpmemobj -pthread)
+target_link_libraries(test_server -pthread)
+target_link_libraries(test_client -pthread)

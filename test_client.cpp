@@ -101,22 +101,23 @@ void sendSerializedData(const std::vector<char>& buffer, int client_socket) {
 
 void initialize_data(size_t number, _key_t*& keys, _payload_t*& payloads) {
     std::mt19937 gen(456); 
-    std::uniform_real_distribution<double> dist(10.0, 100.0);
+    // std::uniform_real_distribution<double> dist(10.0, 100.0);
 
-    // std::normal_distribution<_key_t> key_dist(0, 1e8);
-    // std::uniform_int_distribution<_payload_t> payload_dist(0,1e8);
+    std::normal_distribution<_key_t> key_dist(0, 1e8);
+    std::uniform_int_distribution<_payload_t> payload_dist(0,1e8);
 
     keys = new _key_t[number];
     payloads = new _payload_t[number];
 
     _key_t key = 0;
     for (int i = 0; i < number; i++) {
-        key += dist(gen);
-        keys[i] = key;
-        payloads[i] = key;
-        // keys[i] = key_dist(gen);
-        // payloads[i] = payload_dist(gen);
+        // key += dist(gen);
+        // keys[i] = key;
+        // payloads[i] = key;
+        keys[i] = key_dist(gen);
+        payloads[i] = payload_dist(gen);
     }
+    std::sort(keys, keys + number);
     std::cout << "prepared" << std::endl;
 }
 
@@ -374,8 +375,8 @@ int main()
 
     // while(true) {}
 
-    run_search_test_client(server_sock, testindex, keys, payloads, number);
-    // run_search_test_client_nocache(server_sock, testindex, keys, payloads, number);
+    // run_search_test_client(server_sock, testindex, keys, payloads, number);
+    run_search_test_client_nocache(server_sock, testindex, keys, payloads, number);
 
     close(server_sock);
 }

@@ -11,8 +11,8 @@
 #include <cstdio>
 //#include <omp.h>
 
-#include <libpmemobj.h>
-#include <libpmem.h>
+// #include <libpmemobj.h>
+// #include <libpmem.h>
 
 #include "flush.h"
 #include "spinlock.h"
@@ -334,31 +334,21 @@ public:
         
         for (i = 0; i < plin_->root_number; i++)
         {
-            InnerSlot* acclerater = &plin_->roots[i];
-            if (acclerater->type())
+            InnerSlot* acclerator = &plin_->roots[i];
+            
+            if (acclerator->type())
             {
-                std::cout << "root: " << i << std::endl;
-                (reinterpret_cast<InnerNode *>(acclerater->ptr))->traverseAllInnerSlots([](const InnerSlot& slot) {
+                std::cout << "root: " << i << " slope: " << acclerator->slope << " intercept: " << acclerator->intercept << std::endl;
+                (reinterpret_cast<InnerNode *>(acclerator->ptr))->traverseAllInnerSlots([](const InnerSlot& slot) {
                     std::cout <<"Slope: " << slot.slope << ", Intercept: " << slot.intercept << ", min key: " << slot.min_key << std::endl;
                 });
             }
         }
     }
 
-    void serializeInnerSlot(const InnerSlot& slot, std::vector<char>& buffer) 
-    {
-        size_t size = sizeof(InnerSlot);
-        char* data = reinterpret_cast<char*>(const_cast<InnerSlot*>(&slot));
-        buffer.insert(buffer.end(), data, data + size);
-    }
+    
 
-    void deserializeInnerSlot(InnerSlot& slot, const std::vector<char>& buffer, size_t& offset) 
-    {
-        if (offset + sizeof(InnerSlot) <= buffer.size()) {
-            memcpy(&slot, buffer.data() + offset, sizeof(InnerSlot));
-            offset += sizeof(InnerSlot);
-        }
-    }
+    
 
     // Serialize entire PlinIndex
     void serializePlinIndex(std::vector<char>& buffer) 
@@ -373,14 +363,15 @@ public:
 
         // Serialize roots and logs
         for (int i = 0; i < plin_->root_number; ++i) {
-            InnerSlot* acclerater = &plin_->roots[i];
-            serializeInnerSlot(*acclerater, buffer);
+            InnerSlot* acclerator = &plin_->roots[i];
+            serializeInnerSlot(*acclerator, buffer);
+
 
             std::cout << "serializeInnerSlot " << std::endl;
 
-            if (acclerater->type()) {
+            if (acclerator->type()) {
                 std::cout << "serializeInnerNode " << std::endl;
-                (reinterpret_cast<InnerNode *>(acclerater->ptr))->serializeInnerNode(buffer);
+                (reinterpret_cast<InnerNode *>(acclerator->ptr))->serializeInnerNode(buffer);
             }
                 
         }
@@ -388,6 +379,10 @@ public:
 
     void deserializePlinIndex(const std::vector<char>& buffer) 
     {
+        void* allocated_memory = malloc(sizeof(plin_metadata));
+
+        plin_ = new (allocated_memory) plin_metadata; 
+
         size_t offset = 0;
         if (offset + sizeof(plin_->root_number) <= buffer.size()) {
             memcpy(&plin_->root_number, buffer.data() + offset, sizeof(plin_->root_number));
@@ -402,19 +397,33 @@ public:
         
 
         // 反序列化 roots
+        std::cout << "root number: " << plin_->root_number << std::endl;
+        
         for (int i = 0; i < plin_->root_number && offset < buffer.size(); ++i) {
-            InnerSlot* acclerater = &plin_->roots[i];
-            deserializeInnerSlot(*acclerater, buffer, offset);
+            InnerSlot* accelerator = &plin_->roots[i];
+            deserializeInnerSlot(*accelerator, buffer, offset);
+            std::cout << "root: " << i << " slope: " << accelerator->slope << " intercept: " << accelerator->intercept << std::endl;
+
+            uint32_t block_number;
+            memcpy(&block_number, buffer.data() + offset + 12, sizeof(block_number));
+            std::cout << "block number: " << block_number << std::endl;
+
+
 
             // 如果是 InnerNode，需要进一步反序列化
-            InnerSlot* accelerator = &plin_->roots[i];
+            
             if (accelerator->type()) {
+                std::cout << "deserialize inner node" << std::endl;
 
-                size_t slots_size = accelerator->block_number() * BLOCK_SIZE + sizeof(InnerNode);
+                // size_t slots_size = accelerator->block_number() * BLOCK_SIZE + sizeof(InnerNode);
 
-                InnerNode* inner_node = static_cast<InnerNode*>(::operator new(slots_size));
-                accelerator->ptr = inner_node;
-                (reinterpret_cast<InnerNode *>(accelerator->ptr))->deserializeInnerNode(buffer, offset);
+                // InnerNode* inner_node = static_cast<InnerNode*>(::operator new(slots_size));
+                uint64_t node_size_in_byte = block_number * BLOCK_SIZE + NODE_HEADER_SIZE;
+
+                void* allocated_memory = malloc(node_size_in_byte);
+                accelerator->ptr = new (allocated_memory) InnerNode(buffer, offset);
+                // accelerator->ptr = inner_node;
+                // (reinterpret_cast<InnerNode *>(accelerator->ptr))->deserializeInnerNode(buffer, offset);
             }
         }
     }

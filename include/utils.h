@@ -86,6 +86,30 @@ struct InnerSlot {
     
 };
 
+void serializeInnerSlot(const InnerSlot& slot, std::vector<char>& buffer) {
+    InnerSlot temp_slot = slot;  // 创建一个副本以修改数据
+    temp_slot.ptr = nullptr;     // 不序列化指针
+    temp_slot.init_lock();       // 重置锁状态信息
+
+    size_t size = sizeof(InnerSlot);
+    char* data = reinterpret_cast<char*>(&temp_slot);
+    buffer.insert(buffer.end(), data, data + size);
+}
+
+void deserializeInnerSlot(InnerSlot& slot, const std::vector<char>& buffer, size_t& offset) {
+    if (offset + sizeof(InnerSlot) > buffer.size()) {
+        throw std::runtime_error("Buffer overflow when trying to deserialize InnerSlot.");
+    }
+
+    memcpy(&slot, buffer.data() + offset, sizeof(InnerSlot));
+    offset += sizeof(InnerSlot);
+
+    // 重建指针或重新初始化锁等
+    slot.ptr = nullptr; // 根据应用逻辑重建指针
+    slot.init_lock();   // 重新初始化锁状态
+}
+
+
 static void model_correction(double& slope, float& intercept, uint64_t size, _key_t min_key, _key_t max_key) {
     double min_pos = min_key * slope + intercept;
     double max_pos = max_key * slope + intercept + 1;

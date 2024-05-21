@@ -258,7 +258,7 @@ void start_server(int port, std::vector<char>& buffer, TestIndex& testIndex) {
 }
 
 void test() {
-    size_t number = 1e8;
+    size_t number = 1e7;
     _key_t* keys = nullptr;
     _payload_t* payloads = nullptr;
 

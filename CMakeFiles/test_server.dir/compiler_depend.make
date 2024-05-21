@@ -425,26 +425,6 @@ CMakeFiles/test_server.dir/test_server.cpp.o: test_server.cpp \
   /usr/include/x86_64-linux-gnu/bits/statx-generic.h \
   /usr/include/x86_64-linux-gnu/bits/types/struct_statx_timestamp.h \
   /usr/include/x86_64-linux-gnu/bits/types/struct_statx.h \
-  /usr/include/libpmemobj.h \
-  /usr/include/libpmemobj/action.h \
-  /usr/include/libpmemobj/action_base.h \
-  /usr/include/libpmemobj/base.h \
-  /usr/include/libpmemobj/atomic.h \
-  /usr/include/libpmemobj/atomic_base.h \
-  /usr/include/libpmemobj/types.h \
-  /usr/include/libpmemobj/ctl.h \
-  /usr/include/libpmemobj/iterator.h \
-  /usr/include/libpmemobj/iterator_base.h \
-  /usr/include/libpmemobj/lists_atomic.h \
-  /usr/include/libpmemobj/lists_atomic_base.h \
-  /usr/include/libpmemobj/thread.h \
-  /usr/include/libpmemobj/pool.h \
-  /usr/include/libpmemobj/pool_base.h \
-  /usr/include/libpmemobj/tx.h \
-  /usr/include/libpmemobj/tx_base.h \
-  /usr/include/setjmp.h \
-  /usr/include/x86_64-linux-gnu/bits/setjmp2.h \
-  /usr/include/libpmem.h \
   include/spinlock.h \
   /usr/include/c++/9/thread \
   include/newallocator.h \
@@ -453,20 +433,6 @@ CMakeFiles/test_server.dir/test_server.cpp.o: test_server.cpp \
 
 
 /usr/include/arpa/inet.h:
-
-/usr/include/libpmem.h:
-
-/usr/include/setjmp.h:
-
-/usr/include/libpmemobj/tx.h:
-
-/usr/include/libpmemobj/thread.h:
-
-/usr/include/libpmemobj/iterator_base.h:
-
-/usr/include/libpmemobj/iterator.h:
-
-/usr/include/libpmemobj/action_base.h:
 
 /usr/include/x86_64-linux-gnu/bits/types/struct_statx_timestamp.h:
 
@@ -520,15 +486,9 @@ include/btree/map.h:
 
 /usr/lib/gcc/x86_64-linux-gnu/9/include/limits.h:
 
-/usr/include/libpmemobj/tx_base.h:
-
 /usr/include/assert.h:
 
-/usr/include/libpmemobj/action.h:
-
 /usr/lib/gcc/x86_64-linux-gnu/9/include/mwaitxintrin.h:
-
-/usr/include/libpmemobj.h:
 
 /usr/lib/gcc/x86_64-linux-gnu/9/include/lwpintrin.h:
 
@@ -574,8 +534,6 @@ include/newallocator.h:
 
 /usr/lib/gcc/x86_64-linux-gnu/9/include/bmiintrin.h:
 
-/usr/include/libpmemobj/ctl.h:
-
 /usr/lib/gcc/x86_64-linux-gnu/9/include/lzcntintrin.h:
 
 /usr/lib/gcc/x86_64-linux-gnu/9/include/shaintrin.h:
@@ -603,8 +561,6 @@ include/newallocator.h:
 /usr/lib/gcc/x86_64-linux-gnu/9/include/avx512vldqintrin.h:
 
 /usr/lib/gcc/x86_64-linux-gnu/9/include/avx512vlbwintrin.h:
-
-/usr/include/libpmemobj/atomic.h:
 
 /usr/lib/gcc/x86_64-linux-gnu/9/include/avx512bwintrin.h:
 
@@ -674,15 +630,11 @@ include/plin_index.h:
 
 /usr/include/c++/9/bits/hashtable_policy.h:
 
-/usr/include/x86_64-linux-gnu/bits/setjmp2.h:
-
 /usr/include/c++/9/ext/aligned_buffer.h:
 
 /usr/include/x86_64-linux-gnu/bits/unistd.h:
 
 /usr/include/x86_64-linux-gnu/bits/getopt_core.h:
-
-/usr/include/libpmemobj/pool_base.h:
 
 /usr/lib/gcc/x86_64-linux-gnu/9/include/avxintrin.h:
 
@@ -745,8 +697,6 @@ include/flush.h:
 /usr/include/c++/9/string:
 
 /usr/include/c++/9/debug/assertions.h:
-
-/usr/include/libpmemobj/types.h:
 
 /usr/lib/gcc/x86_64-linux-gnu/9/include/avx512erintrin.h:
 
@@ -928,8 +878,6 @@ test_server.cpp:
 
 /usr/include/c++/9/ratio:
 
-/usr/include/libpmemobj/base.h:
-
 /usr/include/x86_64-linux-gnu/bits/libc-header-start.h:
 
 /usr/include/c++/9/string_view:
@@ -1040,8 +988,6 @@ include/inner_node.h:
 
 /usr/include/x86_64-linux-gnu/bits/waitflags.h:
 
-/usr/include/libpmemobj/atomic_base.h:
-
 /usr/include/x86_64-linux-gnu/bits/waitstatus.h:
 
 /usr/include/x86_64-linux-gnu/sys/types.h:
@@ -1091,8 +1037,6 @@ include/inner_node.h:
 /usr/include/c++/9/bits/stl_function.h:
 
 /usr/include/c++/9/bits/algorithmfwd.h:
-
-/usr/include/libpmemobj/lists_atomic_base.h:
 
 /usr/lib/gcc/x86_64-linux-gnu/9/include/avx512vbmi2vlintrin.h:
 
@@ -1260,8 +1204,6 @@ include/spinlock.h:
 
 /usr/include/c++/9/bits/parse_numbers.h:
 
-/usr/include/libpmemobj/lists_atomic.h:
-
 /usr/include/c++/9/ostream:
 
 /usr/include/x86_64-linux-gnu/bits/types/struct_itimerspec.h:
@@ -1325,8 +1267,6 @@ include/spinlock.h:
 /usr/include/x86_64-linux-gnu/c++/9/bits/c++allocator.h:
 
 /usr/include/x86_64-linux-gnu/asm/posix_types.h:
-
-/usr/include/libpmemobj/pool.h:
 
 /usr/include/asm-generic/types.h:
 

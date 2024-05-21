@@ -1,1 +1,1 @@
-/usr/bin/c++ -Iinclude -mclflushopt -mclwb -fopenmp -march=native -O3 -g CMakeFiles/test_client.dir/test_client.cpp.o -o test_client  -lpmemobj -pthread 
+/usr/bin/c++ -Iinclude -mclflushopt -mclwb -fopenmp -march=native -O3 -g CMakeFiles/test_client.dir/test_client.cpp.o -o test_client  -pthread 
