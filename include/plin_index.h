@@ -340,7 +340,7 @@ public:
             {
                 std::cout << "root: " << i << " slope: " << acclerator->slope << " intercept: " << acclerator->intercept << std::endl;
                 (reinterpret_cast<InnerNode *>(acclerator->ptr))->traverseAllInnerSlots([](const InnerSlot& slot) {
-                    std::cout <<"Slope: " << slot.slope << ", Intercept: " << slot.intercept << ", min key: " << slot.min_key << std::endl;
+                    // std::cout <<"Slope: " << slot.slope << ", Intercept: " << slot.intercept << ", min key: " << slot.min_key << std::endl;
                 });
             }
         }
@@ -354,12 +354,14 @@ public:
     void serializePlinIndex(std::vector<char>& buffer) 
     {
         // Serialize metadata
-        size_t metaSize = sizeof(plin_->root_number) + sizeof(plin_->min_key); // etc.
+        size_t metaSize = sizeof(plin_->root_number) + sizeof(plin_->min_key) + sizeof(plin_->max_key); // etc.
         buffer.resize(metaSize);
         size_t offset = 0;
         memcpy(buffer.data(), &plin_->root_number, sizeof(plin_->root_number));
         offset += sizeof(plin_->root_number);
         memcpy(buffer.data() + offset, &plin_->min_key, sizeof(plin_->min_key));
+        offset += sizeof(plin_->min_key);
+        memcpy(buffer.data() + offset, &plin_->max_key, sizeof(plin_->min_key));
 
         // Serialize roots and logs
         for (int i = 0; i < plin_->root_number; ++i) {
@@ -392,6 +394,11 @@ public:
         if (offset + sizeof(plin_->min_key) <= buffer.size()) {
             memcpy(&plin_->min_key, buffer.data() + offset, sizeof(plin_->min_key));
             offset += sizeof(plin_->min_key);
+        }
+
+        if (offset + sizeof(plin_->max_key) <= buffer.size()) {
+            memcpy(&plin_->max_key, buffer.data() + offset, sizeof(plin_->max_key));
+            offset += sizeof(plin_->max_key);
         }
 
         
@@ -565,27 +572,7 @@ public:
                     ++i;
                 }
 
-                // std::cout << plin_->root_number << std::endl;
-
-                // std::cout << plin_->roots[0].min_key << std::endl;
-
-
-                // if (i == 3)
-                // {
-                //     // std::cout << i << std::endl;
-                //     count ++;
-                //     std::cout << count << std::endl;
-
-                //     std::cout << key << std::endl;
-
-                // }
-                    
-
                 InnerSlot *accelerator = &plin_->roots[--i];
-
-                // std::cout << "root: " << i << std::endl;
-
-
                 if (accelerator->type())
                 {
                     //std::cout << "find_leaf_node" << std::endl;
@@ -619,32 +606,56 @@ public:
         //     btree *right_buffer = new btree(&plin_->right_buffer, false);
         //     return right_buffer->find(key, payload);
         // }
+
+        if (key < plin_->min_key) {
+            // Find in left buffer
+            auto it = plin_->left_buffer->find(key);
+            if (it != plin_->left_buffer->end()) {
+                payload = it->second;
+                return true;
+            }
+            return false;
+        } else if (key > plin_->max_key) {
+            // Find in right buffer
+            auto it = plin_->right_buffer->find(key);
+            if (it != plin_->right_buffer->end()) {
+                payload = it->second;
+                return true;
+            }
+            return false;
+        }
     }
 
-    void find_Path(_key_t key, std::vector<int> &leaf_path)
+    void find_Path(_key_t key, std::vector<int>& leaf_path)
     {
-        uint32_t i = 0;
-        
-        while (i < plin_->root_number && key >= plin_->roots[i].min_key)
-        {
-            
-            ++i;
-        }
-            
-        InnerSlot *accelerator = &plin_->roots[--i];
+        if (key > plin_->min_key && key < plin_->max_key) {
 
-        // std::cout << "min key: " << plin_->min_key << std::endl; 
-        // std::cout << "root number: " << plin_->root_number << std::endl;
-        // std::cout << "find path" << std::endl;
-        // std::cout << "root: " << i << std::endl; 
+            // std::cout << "find path" << std::endl;
 
-        leaf_path.push_back(i);
+            uint32_t i = 0;
+            
+            while (i < plin_->root_number && key >= plin_->roots[i].min_key)
+            {
+                
+                ++i;
+            }
+                
+            InnerSlot *accelerator = &plin_->roots[--i];
 
-        if (accelerator->type()) {
-            (reinterpret_cast<InnerNode *>(accelerator->ptr))->get_Leaf_path(key, accelerator, leaf_path);
-            
-        }
-            
+            // std::cout << "min key: " << plin_->min_key << std::endl; 
+            // std::cout << "root number: " << plin_->root_number << std::endl;
+            // std::cout << "find path" << std::endl;
+            // std::cout << "root: " << i << std::endl; 
+
+            leaf_path.push_back(i);
+
+            // std::cout << "push_back: "<< i << std::endl;
+
+            if (accelerator->type()) {
+                (reinterpret_cast<InnerNode *>(accelerator->ptr))->get_Leaf_path(key, accelerator, leaf_path);
+                
+            }
+        }   
     }
 
     _payload_t find_Payload(std::vector<int> leaf_path,_key_t key) {
@@ -682,18 +693,40 @@ public:
 
     void range_query(_key_t lower_bound, _key_t upper_bound, std::vector<std::pair<_key_t, _payload_t>> &answers)
     {
-        if (lower_bound < plin_->min_key)
-        {
-            // btree *left_buffer = new btree(&plin_->left_buffer, false);
-            // left_buffer->range_query(lower_bound, upper_bound, answers);
-            // lower_bound = plin_->min_key;
+        // if (lower_bound < plin_->min_key)
+        // {
+        //     // btree *left_buffer = new btree(&plin_->left_buffer, false);
+        //     // left_buffer->range_query(lower_bound, upper_bound, answers);
+        //     // lower_bound = plin_->min_key;
+        // }
+        // if (upper_bound > plin_->max_key)
+        // {
+        //     // btree *right_buffer = new btree(&plin_->right_buffer, false);
+        //     // right_buffer->range_query(lower_bound, upper_bound, answers);
+        //     // upper_bound = plin_->max_key;
+        // }
+        // Handle left buffer
+        if (lower_bound < plin_->min_key) {
+            auto it = plin_->left_buffer->lower_bound(lower_bound);
+            auto end = plin_->left_buffer->upper_bound(std::min(upper_bound, plin_->min_key));
+            for (; it != end; ++it) {
+                answers.push_back({it->first, it->second});
+            }
+            // Adjust lower bound for the main range query if needed
+            lower_bound = plin_->min_key;
         }
-        if (upper_bound > plin_->max_key)
-        {
-            // btree *right_buffer = new btree(&plin_->right_buffer, false);
-            // right_buffer->range_query(lower_bound, upper_bound, answers);
-            // upper_bound = plin_->max_key;
+
+        // Handle right buffer
+        if (upper_bound > plin_->max_key) {
+            auto it = plin_->right_buffer->lower_bound(std::max(lower_bound, plin_->max_key));
+            auto end = plin_->right_buffer->upper_bound(upper_bound);
+            for (; it != end; ++it) {
+                answers.push_back({it->first, it->second});
+            }
+            // Adjust upper bound for the main range query if needed
+            upper_bound = plin_->max_key;
         }
+
         if (upper_bound >= plin_->min_key && lower_bound <= plin_->max_key)
         {
             uint32_t i = 0;
@@ -710,10 +743,82 @@ public:
         }
     }
 
-    InnerNode* Path_to_leaf (const std::vector<int> leaf_path)
-    {
+    // InnerNode* Path_to_leaf (const std::vector<int> leaf_path)
+    // {
+        
+    // }
+
+    void upsert_Path(_key_t key, _payload_t payload, std::vector<int> leaf_path) {
+
+        
+
+        if (key > plin_->min_key && key < plin_->max_key) {
+            uint32_t ret;
+            do {
+
+            
+
+            int i = 0;
+            _payload_t ans;
+            InnerSlot *accelerator = &plin_->roots[leaf_path[i]];
+            i ++ ;
+
+            while (accelerator->type() && i < leaf_path.size())
+            {
+                accelerator = (reinterpret_cast<InnerNode *>(accelerator->ptr))->get_Slot(leaf_path[i]);
+                i ++ ;
+            }
+
+
+                LeafNode *leaf_to_split;
+                // ret = 1 : update in a slot; ret = 2 : insert in a free slot; ret = 3 : update in overflow block; ret = 4 : insert in overflow block;
+                // ret = 5 : insert in overflow block & need to split; ret = 6 : insert in overflow block & need to split orphan node; ret = 7 : the node is locked
+                ret = reinterpret_cast<LeafNode *>(accelerator->ptr)->upsert(key, payload, plin_->global_version, leaf_to_split, accelerator);
+                // Split leaf node
+                if (ret == 5)
+                {
+                    #ifdef BACKGROUND_SPLIT
+                        std::thread split_thread(&SelfType::split, this, leaf_to_split, accelerator);
+                        split_thread.detach();
+                    #else
+                        split(leaf_to_split, accelerator);
+                    #endif
+                }
+                else if (ret == 6)
+                {
+#ifdef BACKGROUND_SPLIT
+                    std::thread split_thread(&SelfType::split, this, leaf_to_split, nullptr);
+                    split_thread.detach();
+#else
+                    split(leaf_to_split, NULL);
+#endif
+                }
+            
+
+                    
+        
+            
+            } while (ret == 7);
+        }
+        
+        else if (key < plin_->min_key) {
+            // Upsert in left buffer
+            auto ret = plin_->left_buffer->insert({key, payload});
+            if (!ret.second) { // key already exists, update the value
+                ret.first->second = payload;
+            }
+        } else {
+            // Upsert in right buffer
+            auto ret = plin_->right_buffer->insert({key, payload});
+            if (!ret.second) { // key already exists, update the value
+                ret.first->second = payload;
+            }
+        }
+
         
     }
+
+
 
     void upsert(_key_t key, _payload_t payload)
     {
@@ -740,6 +845,7 @@ public:
                 // Split leaf node
                 if (ret == 5)
                 {
+                    // std::cout << "split" << std::endl;
                     #ifdef BACKGROUND_SPLIT
                         std::thread split_thread(&SelfType::split, this, leaf_to_split, accelerator);
                         split_thread.detach();
@@ -750,6 +856,7 @@ public:
                 else if (ret == 6)
                 {
 #ifdef BACKGROUND_SPLIT
+                    std::cout << "background split" << std::endl;
                     std::thread split_thread(&SelfType::split, this, leaf_to_split, nullptr);
                     split_thread.detach();
 #else
@@ -758,7 +865,26 @@ public:
                 }
             } while (ret == 7);
         }
+
+        
+
         // Upsert in buffer
+        else if (key < plin_->min_key) {
+            // Upsert in left buffer
+            auto ret = plin_->left_buffer->insert({key, payload});
+            if (!ret.second) { // key already exists, update the value
+                ret.first->second = payload;
+            }
+        } else {
+            // Upsert in right buffer
+            auto ret = plin_->right_buffer->insert({key, payload});
+            if (!ret.second) { // key already exists, update the value
+                ret.first->second = payload;
+            }
+        }
+
+
+
         // else if (key < plin_->min_key)
         // {
         //     btree *left_buffer = new btree(&plin_->left_buffer, false);
@@ -805,21 +931,35 @@ public:
                 ret = reinterpret_cast<LeafNode *>(accelerator->ptr)->remove(key, plin_->global_version, accelerator);
             } while (ret == 3);
         }
-        else if (key < plin_->min_key)
-        {
-            // btree *left_buffer = new btree(&plin_->left_buffer, false);
-            // if (left_buffer->remove(key))
-            // {
-            //     --plin_->left_buffer_number;
-            // }
+        // else if (key < plin_->min_key)
+        // {
+        //     // btree *left_buffer = new btree(&plin_->left_buffer, false);
+        //     // if (left_buffer->remove(key))
+        //     // {
+        //     //     --plin_->left_buffer_number;
+        //     // }
+        // }
+        // else
+        // {
+        //     // btree *right_buffer = new btree(&plin_->right_buffer, false);
+        //     // if (right_buffer->remove(key))
+        //     // {
+        //     //     --plin_->right_buffer_number;
+        //     // }
+        // }
+
+        else if (key < plin_->min_key) {
+        // Remove from left buffer
+        size_t count = plin_->left_buffer->erase(key);
+        if (count > 0) {
+            --plin_->left_buffer_number;
         }
-        else
-        {
-            // btree *right_buffer = new btree(&plin_->right_buffer, false);
-            // if (right_buffer->remove(key))
-            // {
-            //     --plin_->right_buffer_number;
-            // }
+        } else  {
+            // Remove from right buffer
+            size_t count = plin_->right_buffer->erase(key);
+            if (count > 0) {
+                --plin_->right_buffer_number;
+            }
         }
     }
 
@@ -880,28 +1020,28 @@ public:
 
         std::chrono::_V2::system_clock::time_point start_log_time = std::chrono::system_clock::now();
         // Write log
-        uint32_t log_number = LOG_NUMBER;
-        do
-        {
-            for (uint32_t i = 0; i < LOG_NUMBER; ++i)
-            {
-                if (plin_->logs[i].try_get_lock())
-                {
-                    log_number = i;
-                    break;
-                }
-            }
-        } while (log_number == LOG_NUMBER);
-        plin_->logs[log_number].leaf_to_split = leaf_to_split;
-        if (left_sibling)
-            plin_->logs[log_number].left_sibling = left_sibling;
-        else
-            plin_->logs[log_number].left_sibling = NULL;
-        if (right_sibling)
-            plin_->logs[log_number].right_sibling = right_sibling;
-        else
-            plin_->logs[log_number].right_sibling = NULL;
-        std::chrono::_V2::system_clock::time_point end_log_time = std::chrono::system_clock::now();
+        // uint32_t log_number = LOG_NUMBER;
+        // do
+        // {
+        //     for (uint32_t i = 0; i < LOG_NUMBER; ++i)
+        //     {
+        //         if (plin_->logs[i].try_get_lock())
+        //         {
+        //             log_number = i;
+        //             break;
+        //         }
+        //     }
+        // } while (log_number == LOG_NUMBER);
+        // plin_->logs[log_number].leaf_to_split = leaf_to_split;
+        // if (left_sibling)
+        //     plin_->logs[log_number].left_sibling = left_sibling;
+        // else
+        //     plin_->logs[log_number].left_sibling = NULL;
+        // if (right_sibling)
+        //     plin_->logs[log_number].right_sibling = right_sibling;
+        // else
+        //     plin_->logs[log_number].right_sibling = NULL;
+        // std::chrono::_V2::system_clock::time_point end_log_time = std::chrono::system_clock::now();
 
         std::vector<_key_t> keys;
         std::vector<_payload_t> payloads;
@@ -946,11 +1086,11 @@ public:
         else
         {
             leaf_to_split->get_read_lock();
-            plin_->logs[log_number].set_orphan();
+            // plin_->logs[log_number].set_orphan();
         }
-        plin_->logs[log_number].left_node = leaf_nodes[0];
-        plin_->logs[log_number].right_node = leaf_nodes[last_n - 1];
-        plin_->logs[log_number].set_valid();
+        // plin_->logs[log_number].left_node = leaf_nodes[0];
+        // plin_->logs[log_number].right_node = leaf_nodes[last_n - 1];
+        // plin_->logs[log_number].set_valid();
         //do_flush(&plin_->logs[log_number], sizeof(split_log));
         mfence();
 
@@ -980,16 +1120,17 @@ public:
             left_sibling->release_lock();
         if (right_sibling)
             right_sibling->release_lock();
-        plin_->logs[log_number].release_lock();
+        // plin_->logs[log_number].release_lock();
 
         std::chrono::_V2::system_clock::time_point end_time = std::chrono::system_clock::now();
 
-        log_t += std::chrono::duration_cast<std::chrono::nanoseconds>(end_log_time - start_log_time);
+        // log_t += std::chrono::duration_cast<std::chrono::nanoseconds>(end_log_time - start_log_time);
         split_t += std::chrono::duration_cast<std::chrono::nanoseconds>(end_time - start_time);
         split_times++;
 
         if (double(plin_->orphan_number) / plin_->leaf_number > MAX_ORPHAN_RATIO)
         {
+            // std::cout << "rebuild_inner_nodes" << std::endl;
 #ifdef BACKGROUND_REBUILD
             std::thread rebuild_thread(&SelfType::rebuild_inner_nodes, this);
             rebuild_thread.detach();
@@ -997,6 +1138,8 @@ public:
             rebuild_inner_nodes();
 #endif
         }
+
+    std::cout << "split done" << std::endl;
     }
 
     void upsert_node(InnerSlot &node)
@@ -1016,6 +1159,7 @@ public:
         {
             ++plin_->orphan_number;
         }
+        std::cout << "upsert node" << std::endl;
     }
 
     LeafNode *get_leftmost_leaf()

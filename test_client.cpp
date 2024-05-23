@@ -100,24 +100,34 @@ void sendSerializedData(const std::vector<char>& buffer, int client_socket) {
     // std::cout << "false count: " << false_count << std::endl;
 
 void initialize_data(size_t number, _key_t*& keys, _payload_t*& payloads) {
-    std::mt19937 gen(456); 
+    std::mt19937 key_gen(456); 
+    std::mt19937 payload_gen(456); 
     // std::uniform_real_distribution<double> dist(10.0, 100.0);
 
-    std::normal_distribution<_key_t> key_dist(0, 1e8);
-    std::uniform_int_distribution<_payload_t> payload_dist(0,1e8);
+    std::normal_distribution<_key_t> key_dist(0, 1e9);
+    std::uniform_int_distribution<_payload_t> payload_dist(0,1e9);
 
     keys = new _key_t[number];
     payloads = new _payload_t[number];
 
-    _key_t key = 0;
-    for (int i = 0; i < number; i++) {
-        // key += dist(gen);
-        // keys[i] = key;
-        // payloads[i] = key;
-        keys[i] = key_dist(gen);
-        payloads[i] = payload_dist(gen);
+    // _key_t key = 0;
+    // for (size_t i = 0; i < number; ++ i) {
+    //     key += dist(gen);
+    //     keys[i] = key;
+    //     payloads[i] = key;
+    // }
+
+    // std::vector<std::pair<_key_t, _payload_t>> kv_pairs(number);
+
+    // _key_t key = 0;
+    // for (size_t i = 0; i < number; ++i) {
+    //     kv_pairs[i] = std::make_pair(key_dist(gen), payload_dist(gen));
+    // }
+    // std::sort(kv_pairs.begin(), kv_pairs.end());
+    for (size_t i = 0; i < number; ++i) {
+        keys[i] = key_dist(key_gen);
+        payloads[i] = payload_dist(payload_gen);
     }
-    std::sort(keys, keys + number);
     std::cout << "prepared" << std::endl;
 }
 
@@ -214,7 +224,11 @@ _payload_t GetPayload(int server_sock, std::vector<int> leaf_path, _key_t key) {
 
     Client_message msg(leaf_path, key);
 
-    // std::cout << "key: " << key << std::endl;
+    // std::cout << "get payload leaf_path: " << std::endl;
+    // for (int path : msg.leaf_path) {
+    //     std::cout << path ;
+    // }
+    // std::cout << std::endl;
 
     sendClientMessage(server_sock, msg);
 
@@ -223,7 +237,7 @@ _payload_t GetPayload(int server_sock, std::vector<int> leaf_path, _key_t key) {
     return ans;
 }
 
-void run_search_test_client(int sock, TestIndex& test_index, _key_t* keys, _payload_t* payloads, size_t number){
+void run_search_test_client(int sock, TestIndex& test_index, _key_t* keys, _payload_t* payloads, size_t number, size_t test_size){
     std::mt19937 search_gen(123);
     std::uniform_int_distribution<size_t> search_dist(0, number - 1);
     int count = 0 , false_count = 0;
@@ -233,7 +247,7 @@ void run_search_test_client(int sock, TestIndex& test_index, _key_t* keys, _payl
 
     auto start = std::chrono::high_resolution_clock::now();
     
-    for(size_t i = 0; i < 1e6; i++){
+    for(size_t i = 0; i < test_size; i++){
 
         if (i % 10000 == 0) { // 每10000次迭代输出一次进度
             
@@ -243,7 +257,7 @@ void run_search_test_client(int sock, TestIndex& test_index, _key_t* keys, _payl
             std::cout << "Duration time: " << duration.count() << " milliseconds" << std::endl;
         }
 
-        size_t target_pos = i;
+        size_t target_pos = search_dist(search_gen);
         _key_t target_key = keys[target_pos];
         _payload_t answer;
 
@@ -252,6 +266,13 @@ void run_search_test_client(int sock, TestIndex& test_index, _key_t* keys, _payl
         // auto start_findPath = std::chrono::high_resolution_clock::now();
 
         test_index.find_Path(target_key, leaf_path);
+
+        // std::cout << "find leaf path: " << std::endl;
+        // for (int i : leaf_path) {
+        //     std::cout << i << " ";
+        // }
+        // std::cout << std::endl;
+
 
         // auto end_findPath = std::chrono::high_resolution_clock::now();
         // findPath_time += std::chrono::duration_cast<std::chrono::milliseconds>(end_findPath - start_findPath);
@@ -298,7 +319,7 @@ _payload_t GetPayload_rawkey(int server_sock, _key_t key) {
 
 }
 
-void run_search_test_client_nocache(int sock, TestIndex& test_index, _key_t* keys, _payload_t* payloads, size_t number){
+void run_search_test_client_nocache(int sock, TestIndex& test_index, _key_t* keys, _payload_t* payloads, size_t number, size_t test_size){
     std::mt19937 search_gen(123);
     std::uniform_int_distribution<size_t> search_dist(0, number - 1);
     int count = 0 , false_count = 0;
@@ -306,7 +327,7 @@ void run_search_test_client_nocache(int sock, TestIndex& test_index, _key_t* key
 
     auto start = std::chrono::high_resolution_clock::now();
     
-    for(size_t i = 0; i < 1e6; i++){
+    for(size_t i = 0; i < test_size; i++){
 
         if (i % 10000 == 0) { // 每10000次迭代输出一次进度
             
@@ -316,7 +337,7 @@ void run_search_test_client_nocache(int sock, TestIndex& test_index, _key_t* key
             std::cout << "Duration time: " << duration.count() << " milliseconds" << std::endl;
         }
 
-        size_t target_pos = i;
+        size_t target_pos = search_dist(search_gen);
         _key_t target_key = keys[target_pos];
         _payload_t answer;
 
@@ -329,8 +350,8 @@ void run_search_test_client_nocache(int sock, TestIndex& test_index, _key_t* key
         answer = GetPayload_rawkey(sock, target_key);
 
         if (answer != payloads[target_pos]) {
-            std::cout << "False!" << std::endl;
-            std::cout << "true answer: " << payloads[target_pos] << " false: " << answer << std::endl;
+            // std::cout << "False!" << std::endl;
+            // std::cout << "true answer: " << payloads[target_pos] << " false: " << answer << std::endl;
             false_count ++ ;
         }
     }
@@ -342,13 +363,147 @@ void run_search_test_client_nocache(int sock, TestIndex& test_index, _key_t* key
     std::cout << "Elapsed time: " << duration.count() << " milliseconds" << std::endl;
 }
 
+void run_upsert_test_client(int server_sock, TestIndex& test_index, _key_t* &new_keys, _payload_t* &new_payloads, size_t number, size_t upsert_times) {
+    std::normal_distribution<_key_t> key_dist(0, 1e9);
+    std::uniform_int_distribution<_payload_t> payload_dist(0,1e9);
+    std::mt19937 key_gen(456);
+    std::mt19937 payload_gen(456);
+
+    // size_t upsert_times = 1e7;
+    new_keys = new _key_t[upsert_times];
+    new_payloads = new _payload_t[upsert_times];
+    std::vector<int> leaf_path;
+
+    auto start = std::chrono::high_resolution_clock::now();
+
+    for(size_t i = 0; i < upsert_times; i++){
+
+        if (i % 10000 == 0) { // 每10000次迭代输出一次进度
+            
+            auto end = std::chrono::high_resolution_clock::now();
+            auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+
+            std::cout << "Duration time: " << duration.count() << " milliseconds" << std::endl;
+        }
+
+        new_keys[i] = key_dist(key_gen);
+        new_payloads[i] = payload_dist(payload_gen);
+
+        
+
+        leaf_path.clear();
+
+        test_index.find_Path(new_keys[i], leaf_path);
+
+        
+
+        Client_message msg(new_keys[i], new_payloads[i], leaf_path);
+        // std::cout << "send key: " << new_keys[i] << std::endl;
+        // std::cout << "send payload: " << new_payloads[i] << std::endl;
+
+        // std::cout << "sendClientMessage" << std::endl;
+
+        sendClientMessage(server_sock, msg);
+        
+        _payload_t ans;
+        receivePayload(server_sock, ans);
+
+    }
+
+    auto end = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+
+    std::cout << "Elapsed time: " << duration.count() << " milliseconds" << std::endl;
+
+    std::cout << "Justify upsert: " << std::endl;
+
+    run_search_test_client_nocache(server_sock, test_index, new_keys, new_payloads, upsert_times, upsert_times);
+
+    // std::mt19937 search_gen(123);
+    // std::uniform_int_distribution<size_t> search_dist(0, number - 1);
+    // int count = 0 , false_count = 0;
+    // // std::vector<int> leaf_path;
+
+    // start = std::chrono::high_resolution_clock::now();
+    
+    // for(size_t i = 0; i < upsert_times; i++){
+
+    //     if (i % 10000 == 0) { // 每10000次迭代输出一次进度
+            
+    //         auto end = std::chrono::high_resolution_clock::now();
+    //         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+
+    //         std::cout << "Duration time: " << duration.count() << " milliseconds" << std::endl;
+    //     }
+
+    //     size_t target_pos = search_dist(search_gen);
+    //     _key_t target_key = new_keys[target_pos];
+    //     _payload_t answer;
+
+    //     // leaf_path.clear();
+
+    //     // test_index.find_Path(target_key, leaf_path);
+
+    //     // answer = GetPayload(sock, leaf_path, target_key);
+
+    //     answer = GetPayload_rawkey(server_sock, target_key);
+
+    //     if (answer != new_payloads[target_pos]) {
+    //         // std::cout << "False!" << std::endl;
+    //         // std::cout << "true answer: " << payloads[target_pos] << " false: " << answer << std::endl;
+    //         false_count ++ ;
+    //     }
+    // }
+    // std::cout << "false count: " << false_count << std::endl;
+
+    // end = std::chrono::high_resolution_clock::now();
+    // duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+
+    // std::cout << "Elapsed time: " << duration.count() << " milliseconds" << std::endl;
+        
+        // testIndex.upsert(new_keys[i], new_payloads[i]);
 
 
+    
 
-int main() 
-{
+    // for(size_t i = 0; i < upsert_times; i++){
+    //     _payload_t answer;
+    //     testIndex.find(new_keys[i], answer);
+    //     if(answer != new_payloads[i]){
+    //         // std::cout<<"#Number: "<<i<<std::endl;
+    //         // std::cout<<"#Key: "<<new_keys[i]<<std::endl;
+    //         // std::cout<<"#Wrong answer: "<<answer<<std::endl;
+    //         // std::cout<<"#Correct answer: "<<new_payloads[i]<<std::endl;
+    //         // test_index.find(new_keys[i], answer);
+    //         // throw std::logic_error("Answer wrong!");
+    //         count ++ ;
+    //     }
+    // }
+}
 
+
+int main(int argc, char* argv[]) {
+
+    int port = 8080;
     size_t number = 1e7;
+    size_t test_size = 1e6;
+    int mode = 0;   // run_search_test
+
+    if (argc > 1) {
+        port = std::stoi(argv[1]);
+    }
+    if (argc > 2) {
+        number = static_cast<size_t>(std::stod(argv[2]));
+    }
+    if (argc > 3) {
+        test_size = static_cast<size_t>(std::stod(argv[3]));
+    }
+    if (argc > 4) {
+        mode = std::stoi(argv[4]);
+    }
+
+    std::cout << "Port: " << port << " number: " << number << std::endl;
+
     // std::mt19937 gen(456); 
     // std::uniform_real_distribution<double> dist(10.0, 100.0);
 
@@ -366,7 +521,7 @@ int main()
 
     initialize_data(number, keys, payloads);
 
-    int server_sock = start_client(8080);
+    int server_sock = start_client(port);
 
     // get PLIN cache
     TestIndex testindex = GetMeta(server_sock);
@@ -375,8 +530,24 @@ int main()
 
     // while(true) {}
 
-    // run_search_test_client(server_sock, testindex, keys, payloads, number);
-    run_search_test_client_nocache(server_sock, testindex, keys, payloads, number);
+    if (mode == 0) {
+        std::cout << "run with cache" << std::endl;
+        run_search_test_client(server_sock, testindex, keys, payloads, number, test_size);
+    }
+    else if (mode == 1) {
+        std::cout << "run without cache" << std::endl;
+        run_search_test_client_nocache(server_sock, testindex, keys, payloads, number, test_size);
+    }
+    else if (mode == 3) {
+        std::cout << "run upsert with cache" << std::endl;
+        _key_t* new_keys = nullptr;
+        _payload_t* new_payloads = nullptr;
+        run_upsert_test_client(server_sock, testindex, new_keys, new_payloads, number, test_size);
+        
+    }
+
+    
+    
 
     close(server_sock);
 }

@@ -8,6 +8,7 @@
 #include <unordered_set>
 #include <iomanip>
 #include <fstream>
+#include <cstdlib>
 
 #include "include/plin_index.h"
 #include "include/message.h"
@@ -55,7 +56,7 @@ void run_search_test(TestIndex& test_index, _key_t* keys, _payload_t* payloads, 
 }
 
 void run_upsert_test(TestIndex& test_index, _key_t* keys, _payload_t* payloads, size_t number){
-    std::normal_distribution<_key_t> key_dist(0, 1e10);
+    std::normal_distribution<_key_t> key_dist(0, 1e9);
     std::uniform_int_distribution<_payload_t> payload_dist(0,1e9);
     std::mt19937 key_gen(time(NULL));
     std::mt19937 payload_gen(time(NULL));
@@ -67,21 +68,29 @@ void run_upsert_test(TestIndex& test_index, _key_t* keys, _payload_t* payloads, 
         new_keys[i] = key_dist(key_gen);
         new_payloads[i] = payload_dist(payload_gen);
         test_index.upsert(new_keys[i], new_payloads[i]);
+        // if (i % 10000 == 0) {
+        //     std::cout << i << std::endl;
+        // }
+        
     }
+
+    // std::cout << "upsert done" << std::endl;
 
     for(size_t i = 0; i < upsert_times; i++){
         _payload_t answer;
         test_index.find(new_keys[i], answer);
         if(answer != new_payloads[i]){
-            // std::cout<<"#Number: "<<i<<std::endl;
-            // std::cout<<"#Key: "<<new_keys[i]<<std::endl;
-            // std::cout<<"#Wrong answer: "<<answer<<std::endl;
-            // std::cout<<"#Correct answer: "<<new_payloads[i]<<std::endl;
+            std::cout<<"#Number: "<<i<<std::endl;
+            std::cout<<"#Key: "<<new_keys[i]<<std::endl;
+            std::cout<<"#Wrong answer: "<<answer<<std::endl;
+            std::cout<<"#Correct answer: "<<new_payloads[i]<<std::endl;
             // test_index.find(new_keys[i], answer);
             // throw std::logic_error("Answer wrong!");
             count ++ ;
         }
     }
+
+    std::cout << "wrong count: " << count << std::endl;
 }
 
 std::vector<int> deserializeVector(const std::vector<char>& buffer) {
@@ -113,24 +122,34 @@ void handle_connection(int socket) {
 }
 
 void initialize_data(size_t number, _key_t*& keys, _payload_t*& payloads) {
-    std::mt19937 gen(456); 
+    std::mt19937 key_gen(456); 
+    std::mt19937 payload_gen(456); 
     // std::uniform_real_distribution<double> dist(10.0, 100.0);
 
-    std::normal_distribution<_key_t> key_dist(0, 1e8);
-    std::uniform_int_distribution<_payload_t> payload_dist(0,1e8);
+    std::normal_distribution<_key_t> key_dist(0, 1e9);
+    std::uniform_int_distribution<_payload_t> payload_dist(0,1e9);
 
     keys = new _key_t[number];
     payloads = new _payload_t[number];
 
-    _key_t key = 0;
-    for (int i = 0; i < number; i++) {
-        // key += dist(gen);
-        // keys[i] = key;
-        // payloads[i] = key;
-        keys[i] = key_dist(gen);
-        payloads[i] = payload_dist(gen);
+    // _key_t key = 0;
+    // for (size_t i = 0; i < number; ++ i) {
+    //     key += dist(gen);
+    //     keys[i] = key;
+    //     payloads[i] = key;
+    // }
+
+    std::vector<std::pair<_key_t, _payload_t>> kv_pairs(number);
+
+    // _key_t key = 0;
+    for (size_t i = 0; i < number; ++i) {
+        kv_pairs[i] = std::make_pair(key_dist(key_gen), payload_dist(payload_gen));
     }
-    std::sort(keys, keys + number);
+    std::sort(kv_pairs.begin(), kv_pairs.end());
+    for (size_t i = 0; i < number; ++i) {
+        keys[i] = kv_pairs[i].first;
+        payloads[i] = kv_pairs[i].second;
+    }
     std::cout << "Data initialized and sorted successfully." << std::endl;
 }
 
@@ -161,12 +180,16 @@ void handle_client(TestIndex& testIndex, int client_socket, std::vector<char>& b
 
     while (true) {
         Client_message receivedMsg = receiveAndDeserialize(client_socket);
+
+        // std::cout << "message deserialized" << std::endl;
+
         if (receivedMsg.type == Client_message::META) {
             send(client_socket, buffer.data(), buffer.size(), 0);
 
         }
         else if (receivedMsg.type == Client_message::LOOKUP) {
-            std::vector<int> leaf_path = receivedMsg.data.leaf_path;
+            // std::cout << "LOOKUP" << std::endl;
+            std::vector<int> leaf_path = receivedMsg.leaf_path;
             _key_t key = receivedMsg.key;
             // std::cout << "key: " << key << std::endl;
             _payload_t payload = testIndex.find_Payload(leaf_path, key);
@@ -183,13 +206,26 @@ void handle_client(TestIndex& testIndex, int client_socket, std::vector<char>& b
             break;
         }
         else if (receivedMsg.type == Client_message::RAW_KEY) {
-
-            
-
             _key_t key = receivedMsg.key;
-            std::cout << "key: " << key << std::endl;
             _payload_t payload;
             testIndex.find(key, payload);
+            sendPayload(client_socket, payload);
+        }
+        else if (receivedMsg.type == Client_message::INSERT) {
+            std::cout << "INSERT" << std::endl;
+            _key_t key = receivedMsg.key;
+            _payload_t payload = receivedMsg.payload;
+            // std::cout << "true key: " << key << std::endl;
+            // std::cout << "true payload: " << payload << std::endl;
+            _payload_t ans;
+
+            std::vector<int> leaf_path = receivedMsg.leaf_path;
+            testIndex.upsert(key, payload);
+            // testIndex.find(key, ans);
+            // if (ans != payload)
+            //     std::cout << "upsert wrong!" << std::endl;
+            // else 
+            //     std::cout << "upsert wrong!" << std::endl;
 
             sendPayload(client_socket, payload);
         }
@@ -258,7 +294,21 @@ void start_server(int port, std::vector<char>& buffer, TestIndex& testIndex) {
 }
 
 void test() {
+    
+}
+
+int main(int argc, char* argv[]) {
+
+    int port = 8080;
     size_t number = 1e7;
+
+    if (argc == 3) {
+        port = std::stoi(argv[1]); 
+        number = static_cast<size_t>(std::stod(argv[2]));
+    }
+
+    std::cout << "Port: " << port << " number: " << number << std::endl;
+
     _key_t* keys = nullptr;
     _payload_t* payloads = nullptr;
 
@@ -267,17 +317,15 @@ void test() {
     test_index.bulk_load(keys, payloads, number);
     test_index.PrintInfo();
 
-    run_search_test(test_index, keys, payloads, number);
+    // run_upsert_test(test_index, keys, payloads, number);
+
+    // run_search_test(test_index, keys, payloads, number);
 
     std::vector<char> buffer;
     test_index.serializePlinIndex(buffer);
     prependSizeToBuffer(buffer);
 
-    start_server(8080, buffer, test_index);
-}
-
-int main() {
-    test();
+    start_server(port, buffer, test_index);
     return 0;
 }
 

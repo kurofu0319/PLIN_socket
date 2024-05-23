@@ -324,13 +324,18 @@ public:
 
         // Find in overflow block
         if (leaf_slots[slot].header.overflow_tree) {
-
-            if (key - 35497497.707480 < 0.1 && key - 35497497.707480 > -0.1)
-            {
-                std::cout << "find KEY 35497497.707480 in overflowtree" << std::endl;
-                std::cout << "slot: " << slot << std::endl;
-                // std::cout << "have overflow tree:" << leaf_slots[slot].header.overflow_tree << std::endl;
+            auto it = leaf_slots[slot].header.overflow_tree->find(key);
+            if (it != leaf_slots[slot].header.overflow_tree->end()) {
+                payload = it->second;
+                return 1;
             }
+
+            // if (key - 35497497.707480 < 0.1 && key - 35497497.707480 > -0.1)
+            // {
+            //     std::cout << "find KEY 35497497.707480 in overflowtree" << std::endl;
+            //     std::cout << "slot: " << slot << std::endl;
+            //     // std::cout << "have overflow tree:" << leaf_slots[slot].header.overflow_tree << std::endl;
+            // }
 
             // btree * overflow_tree = new btree(&leaf_slots[slot].header.overflow_tree, false);
             // if(overflow_tree->find(key, payload)){
@@ -338,13 +343,9 @@ public:
             //     return 1;
             // }
 
-            if (leaf_slots[slot].header.overflow_tree) {
-                auto it = leaf_slots[slot].header.overflow_tree->find(key);
-                if (it != leaf_slots[slot].header.overflow_tree->end()) {
-                    payload = it->second;
-                    return 1;
-                }
-            }
+            // if (leaf_slots[slot].header.overflow_tree) {
+            
+            // }
 
 
 
@@ -393,6 +394,11 @@ public:
                 }
             }
             if (leaf_slots[slot].header.overflow_tree) {
+                for (auto it = leaf_slots[slot].header.overflow_tree->lower_bound(lower_bound);
+                 it != leaf_slots[slot].header.overflow_tree->end() && it->first <= upper_bound;
+                 ++it) {
+                answers.emplace_back(it->first, it->second);
+            }
                 // btree* overflow_tree = new btree(&leaf_slots[slot].header.overflow_tree, false);
                 // overflow_tree->range_query(lower_bound, upper_bound, answers);
             }
@@ -408,6 +414,7 @@ public:
     uint32_t upsert (_key_t key, _payload_t payload, uint32_t global_version, LeafNode*& leaf_to_split, const InnerSlot * accelerator = NULL) {
 
         if (!check_read_lock(accelerator)) {
+            
             return 7;
         }
 
@@ -460,10 +467,55 @@ public:
             }
         }
 
+        uint32_t flag = 0;
+
         // Upsert into overflow block
+        if (!leaf_slots[slot].header.overflow_tree) {
+            leaf_slots[slot].header.overflow_tree = new btree::map<_key_t, _payload_t>();
+        }
+        auto it  = leaf_slots[slot].header.overflow_tree->find(key);
+        
+
+        if (it == leaf_slots[slot].header.overflow_tree->end()) {
+            // not Found
+            if (deleted_slot > 0) 
+                flag = 2;
+            else {
+                auto result = leaf_slots[slot].header.overflow_tree->insert({key, payload});
+                if (!result.second) { // Key already exists, update the value
+                    result.first->second = payload;
+                    // leaf_slots[slot].header.release_lock();
+                    flag = 3;  // Updated in overflow tree
+                }
+                else 
+                    flag = 4;
+            }
+        }
+        else {
+            auto result = leaf_slots[slot].header.overflow_tree->insert({key, payload});
+                if (!result.second) { // Key already exists, update the value
+                    result.first->second = payload;
+                    // leaf_slots[slot].header.release_lock();
+                    flag = 3;  // Updated in overflow tree
+                }
+                else 
+                    flag = 4;  // insert in overflow tree
+        }
+
+        
+
+
+        // else {
+        //     // ++leaf_node.overflow_number;  // Increase overflow count if new insertion
+        //     // leaf_slots[slot].header.release_lock();
+        //     flag = 4;  // Inserted in overflow tree
+        // }
+        
+    
+        
         // btree* overflow_tree = new btree(&leaf_slots[slot].header.overflow_tree, !leaf_slots[slot].header.overflow_tree);
         // uint32_t flag = overflow_tree->upsert(key, payload, deleted_slot);
-        uint32_t flag = 0;
+        
 
         if (flag == 2) {
             leaf_slots[slot + deleted_slot].data.payload = payload;
@@ -603,10 +655,40 @@ public:
             leaf_slots[block*LeafSlotsPerBlock].header.check_lock(global_version);      // Ensure no write on this block
             std::sort(leaf_slots + (block * LeafSlotsPerBlock + 1), leaf_slots + ((block + 1) * LeafSlotsPerBlock), leafslot_cmp);
             if (leaf_slots[block * LeafSlotsPerBlock].header.overflow_tree) {
+                std::vector<_key_t> overflowed_keys;
+                std::vector<_payload_t> overflowed_payloads;
+                for (const auto& kv : *leaf_slots[block * LeafSlotsPerBlock].header.overflow_tree) {
+                    overflowed_keys.push_back(kv.first);
+                    overflowed_payloads.push_back(kv.second);
+                }
+
+                uint32_t i = 1, j = 0;
+                // 跳过标记为DELETE_FLAG或FREE_FLAG的槽
+                while (i < LeafSlotsPerBlock && (leaf_slots[block * LeafSlotsPerBlock + i].data.key == DELETE_FLAG || leaf_slots[block * LeafSlotsPerBlock + i].data.key == FREE_FLAG)) {
+                    ++i;
+                }
+
+                // 合并数据
+                while (i < LeafSlotsPerBlock || j < overflowed_keys.size()) {
+                    if (i == LeafSlotsPerBlock || (j < overflowed_keys.size() && leaf_slots[block * LeafSlotsPerBlock + i].data.key > overflowed_keys[j])) {
+                        keys.emplace_back(overflowed_keys[j]);
+                        payloads.emplace_back(overflowed_payloads[j++]);
+                    } else {
+                        if(leaf_slots[block * LeafSlotsPerBlock + i].data.key < leaf_node.first_key)
+                            int k=0;  // 这行可能只是用于调试，实际使用时应该检查其目的并相应调整
+                        keys.emplace_back(leaf_slots[block * LeafSlotsPerBlock + i].data.key);
+                        payloads.emplace_back(leaf_slots[block * LeafSlotsPerBlock + i].data.payload);
+                        ++i;
+                        // 跳过所有标记为DELETE_FLAG或FREE_FLAG的后续槽
+                        if (i < LeafSlotsPerBlock && (leaf_slots[block * LeafSlotsPerBlock + i].data.key == DELETE_FLAG || leaf_slots[block * LeafSlotsPerBlock + i].data.key == FREE_FLAG)) {
+                            i = LeafSlotsPerBlock;
+                        }
+                    }
+                }
                 // // btree* overflow_tree = new btree(&leaf_slots[block * LeafSlotsPerBlock].header.overflow_tree, false);
                 // // std::vector<_key_t> overflowed_keys;
                 // // std::vector<_payload_t> overflowed_payloads;
-                // // overflow_tree->get_data(overflowed_keys, overflowed_payloads);
+                // overflow_tree->get_data(overflowed_keys, overflowed_payloads);
                 // uint32_t i = 1, j = 0;
                 // while (i < LeafSlotsPerBlock && (leaf_slots[block * LeafSlotsPerBlock + i].data.key == DELETE_FLAG || leaf_slots[block * LeafSlotsPerBlock + i].data.key == FREE_FLAG)) {
                 //     ++i;

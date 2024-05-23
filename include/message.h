@@ -1,14 +1,11 @@
 #include <iostream>
 #include <vector>
 #include <utility>
-#include "parameters.h" // 包含 _key_t 和 _payload_t 类型定义
-#include <sys/socket.h>
-#include <cstring> // For strlen, memcpy
-#include <unistd.h> // For close
+#include "parameters.h" 
+#include <cstring> 
+#include <unistd.h> 
 #include <arpa/inet.h>
 #include <sstream>
-#include <iomanip>
-
 
 class Client_message {
 public:
@@ -16,170 +13,108 @@ public:
 
     Type type;
     _key_t key;
-    union Data {
-        std::vector<int> leaf_path;
-        std::pair<_key_t, _payload_t> key_value;
+    _payload_t payload;
+    std::vector<int> leaf_path;
 
-        Data() {} // Default constructor
-        Data(const Data& other) {} // Copy constructor placeholder
-        ~Data() {} // Destructor placeholder
-    } data;
-
-public:
     static const Client_message InvalidMessage;
 
     Client_message(Type t) : type(t) {}
     Client_message(_key_t key) : type(RAW_KEY), key(key) {}
-    Client_message(const std::vector<int>& path, _key_t key) : type(LOOKUP), key(key) { new (&data.leaf_path) std::vector<int>(path); }
-    Client_message(_key_t key, _payload_t payload) : type(INSERT) { new (&data.key_value) std::pair<_key_t, _payload_t>(key, payload); }
+    Client_message(const std::vector<int>& path, _key_t key) : type(LOOKUP), key(key), leaf_path(path) {}
+    Client_message(_key_t key, _payload_t payload, const std::vector<int>& path) : type(INSERT), key(key), payload(payload), leaf_path(path){}
 
-    // Copy constructor
-    Client_message(const Client_message& other) : type(other.type) {
-        if (type == LOOKUP) {
-            new (&data.leaf_path) std::vector<int>(other.data.leaf_path);
-        } else if (type == INSERT) {
-            new (&data.key_value) std::pair<_key_t, _payload_t>(other.data.key_value);
+    ~Client_message() {}
+
+    std::string serialize() const {
+        std::ostringstream content;
+        content.write(reinterpret_cast<const char*>(&type), sizeof(Type));
+        content.write(reinterpret_cast<const char*>(&key), sizeof(_key_t));
+        content.write(reinterpret_cast<const char*>(&payload), sizeof(_payload_t));
+
+        uint32_t leafPathSize = htonl(leaf_path.size());
+        content.write(reinterpret_cast<const char*>(&leafPathSize), sizeof(leafPathSize));
+        for (int value : leaf_path) {
+            content.write(reinterpret_cast<const char*>(&value), sizeof(int));
         }
-    }
 
-    // Copy assignment operator
-    Client_message& operator=(const Client_message& other) {
-        if (this != &other) {
-            this->~Client_message(); // Clean up current state
-            type = other.type;
-            if (type == LOOKUP) {
-                new (&data.leaf_path) std::vector<int>(other.data.leaf_path);
-            } else if (type == INSERT) {
-                new (&data.key_value) std::pair<_key_t, _payload_t>(other.data.key_value);
-            }
-        }
-        return *this;
-    }
-
-    ~Client_message() {
-        if (type == LOOKUP) {
-            data.leaf_path.~vector<int>();
-        } else if (type == INSERT) {
-            data.key_value.~pair<_key_t, _payload_t>();
-        }
-    }
-
-
-std::string serialize() const {
-    std::ostringstream serializedContent;
-    serializedContent << static_cast<char>(type); // 添加类型信息
-
-    if (type == LOOKUP) {
-        // 以二进制形式序列化 double 类型的 key
-        serializedContent.write(reinterpret_cast<const char*>(&key), sizeof(_key_t));
-        serializedContent << ";";
-
-        // std::cout << "key ; " << key << std::endl;
-
-        for (int value : data.leaf_path) {
-            serializedContent << value << ",";
-        }
-    } else if (type == INSERT) {
-        // 以二进制形式序列化 double 类型的 key_value.first
-        serializedContent.write(reinterpret_cast<const char*>(&data.key_value.first), sizeof(_key_t));
-        serializedContent << ";";
-        // 以二进制形式序列化 double 类型的 key_value.second
-        serializedContent.write(reinterpret_cast<const char*>(&data.key_value.second), sizeof(_payload_t));
-    }
-    else if (type == RAW_KEY) {
-        // 以二进制形式序列化 double 类型的 key
-        serializedContent.write(reinterpret_cast<const char*>(&key), sizeof(_key_t));
-        // serializedContent << ";";
-
-        // std::cout << "key ; " << key << std::endl;
-
-        // for (int value : data.leaf_path) {
-        //     serializedContent << value << ",";
+        // if (type == INSERT) {
+        //     content.write(reinterpret_cast<const char*>(&key_value.first), sizeof(_key_t));
+        //     content.write(reinterpret_cast<const char*>(&key_value.second), sizeof(_payload_t));
         // }
+
+        // 序列化完成后，将长度作为头部加入
+        std::string serializedData = content.str();
+        uint32_t totalLength = htonl(serializedData.size() + sizeof(uint32_t)); // 加上长度字段自身的大小
+        // std::cout << "send data size: " << serializedData.size() + sizeof(uint32_t) << std::endl;
+
+
+        std::ostringstream serializedMessage;
+        serializedMessage.write(reinterpret_cast<const char*>(&totalLength), sizeof(totalLength));
+        serializedMessage << serializedData;
+
+        return serializedMessage.str();
     }
 
-    std::string content = serializedContent.str();
-    std::string serializedData;
-    uint32_t dataLength = htonl(content.size()); // 确保以网络字节顺序发送长度
-    serializedData.append(reinterpret_cast<char*>(&dataLength), sizeof(dataLength));
-    serializedData.append(content);
-
-    // std::cout << "serialize: " << serializedData << std::endl;
-
-    return serializedData;
-
-    
-}
-
-
-    // 反序列化方法
     static Client_message deserialize(const std::string& serializedData) {
-    if (serializedData.empty()) {
-        return InvalidMessage;
-    }
 
-    Type t = static_cast<Type>(serializedData[0]);
+        // std::cout << "deserialize data" << std::endl;
 
-    if (t == LOOKUP) {
-        size_t pos = serializedData.rfind(';') + 1;
 
-        // 使用二进制方式反序列化 double 类型的 key
+        std::istringstream ss(serializedData);
+        Type t;
+        ss.read(reinterpret_cast<char*>(&t), sizeof(Type));
+        // std::cout << "type: " << t << std::endl;
+
         _key_t key;
-        memcpy(&key, serializedData.data() + 1, sizeof(_key_t));  // 假设 key 紧跟类型信息后存储
+        ss.read(reinterpret_cast<char*>(&key), sizeof(_key_t));
         // std::cout << "key: " << key << std::endl;
 
-        // std::cout << "deserialize key: " << key << std::endl;
-
-        std::vector<int> path;
-        std::string pathData = serializedData.substr(pos);
-        size_t start = 0, end;
-        try {
-            while ((end = pathData.find(',', start)) != std::string::npos) {
-                path.push_back(std::stoi(pathData.substr(start, end - start)));
-                start = end + 1;
-            }
-            if (start < pathData.length()) {
-                path.push_back(std::stoi(pathData.substr(start)));
-            }
-        } catch (const std::exception& e) {
-            std::cerr << "Error during deserialization: " << e.what() << std::endl;
-            // std::cout << "raw data" << serializedData << std::endl;
-            // std::cout << pathData << std::endl;
-            return InvalidMessage;
-        }
-        return Client_message(path, key);
-    } else if (t == INSERT) {
-        size_t pos = serializedData.find(';') + 1;
-        size_t pos2 = serializedData.find(';', pos);
-
-        // 使用二进制方式反序列化 double 类型的 key 和 payload
-        _key_t key;
         _payload_t payload;
-        memcpy(&key, serializedData.data() + 1, sizeof(_key_t));  // 假设 key 紧跟类型信息后存储
-        memcpy(&payload, serializedData.data() + pos + 1, sizeof(_payload_t));  // 假设 payload 紧跟第一个分号后存储
+        ss.read(reinterpret_cast<char*>(&payload), sizeof(_payload_t));
 
-        return Client_message(key, payload);
+        uint32_t leafPathSize;
+        ss.read(reinterpret_cast<char*>(&leafPathSize), sizeof(leafPathSize));
+        leafPathSize = ntohl(leafPathSize);
+        std::vector<int> leaf_path(leafPathSize);
+        // std::cout << "leafPathsize: " << leafPathSize << std::endl;
+        // std::cout << "deserialize leaf path: " << std::endl;
+        // for (uint32_t i = 0; i < leafPathSize; ++i) {
+            
+        //     ss.read(reinterpret_cast<char*>(&leaf_path[i]), sizeof(int));
+        //     std::cout << leaf_path[i] << " ";
+        // }
+
+        // std::cout << std::endl;
+
+        if (t == INSERT) {
+            // _key_t insert_key;
+            // _payload_t insert_payload;
+            // ss.read(reinterpret_cast<char*>(&insert_key), sizeof(_key_t));
+            // ss.read(reinterpret_cast<char*>(&insert_payload), sizeof(_payload_t));
+            return Client_message(key, payload, leaf_path);
+        } else if (t == LOOKUP) {
+            // std::cout << "LOOKUP" << std::endl;
+            return Client_message(leaf_path, key);
+        } else if (t == RAW_KEY) {
+            return Client_message(key);
+        } else if (t == META) {
+            return Client_message(t);
+        }
+
+        return InvalidMessage;
     }
-
-    else if (t == RAW_KEY) {
-        _key_t key;
-        memcpy(&key, serializedData.data() + 1, sizeof(_key_t));  
-        std::cout << "deserialize key: " << key << std::endl;
-        return Client_message(key);
-    }
-
-    return Client_message(t);
-}
 };
 
 const Client_message Client_message::InvalidMessage(Client_message::INVALID);
 
 void sendClientMessage(int sock, const Client_message& msg) {
     std::string data = msg.serialize();
+
     if (send(sock, data.c_str(), data.size(), 0) == -1) {
         std::cerr << "Error sending data\n";
         close(sock);
     }
+    // std::cout << "client message sent" << std::endl;
 }
 
 Client_message receiveAndDeserialize(int sock) {
@@ -191,14 +126,12 @@ Client_message receiveAndDeserialize(int sock) {
     }
 
     dataLength = ntohl(dataLength); // 转换字节序
-    if (dataLength == 0) {
-        std::cerr << "Data length is zero\n";
-        return Client_message::InvalidMessage;
-    }
 
-    // std::cout << "data length: " << dataLength << std::endl;
+    // std::cout << "receive data length: " << dataLength << std::endl;
 
-    std::vector<char> buffer(dataLength); // 使用 vector 来存储接收的数据
+    dataLength -= sizeof(uint32_t);
+
+    std::vector<char> buffer(dataLength);
     size_t totalReceived = 0;
     while (totalReceived < dataLength) {
         ssize_t bytesRead = recv(sock, buffer.data() + totalReceived, dataLength - totalReceived, 0);
@@ -211,13 +144,5 @@ Client_message receiveAndDeserialize(int sock) {
     }
 
     std::string receivedData(buffer.begin(), buffer.end());
-    // if (receivedData.size() < sizeof(uint32_t)) {
-    //     std::cerr << "Received data is shorter than expected\n";
-    //     return Client_message::InvalidMessage;
-    // }
-
-    // Client_message receivedMsg = Client_message::deserialize(receivedData);
-    // return receivedMsg;
     return Client_message::deserialize(receivedData);
 }
-

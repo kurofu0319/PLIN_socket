@@ -171,10 +171,14 @@ public:
             deserializeInnerSlot(inner_slots[i], buffer, offset);
 
             if (inner_slots[i].type() && inner_slots[i].min_key != FREE_FLAG) {
-                // TODO:
-                if (inner_slots[i].ptr != nullptr) {
-                    reinterpret_cast<InnerNode*>(inner_slots[i].ptr)->deserializeInnerNode(buffer, offset);
-                }
+                 std::cout << "deserialize recursively" << std::endl;
+                    uint32_t block_number;
+                    memcpy(&block_number, buffer.data() + offset + 12, sizeof(block_number));
+                    std::cout << "block number: " << block_number << std::endl;
+
+                    uint64_t node_size_in_byte = block_number * BLOCK_SIZE + NODE_HEADER_SIZE;
+                    void* allocated_memory = malloc(node_size_in_byte);
+                    inner_slots[i].ptr = new (allocated_memory) InnerNode(buffer, offset);
             }
         }
 
@@ -226,7 +230,7 @@ public:
         uint32_t block_number = accelerator->block_number();
         uint64_t slot = predict_block(key, accelerator->slope, accelerator->intercept, block_number) * InnerSlotsPerBlock;
 
-        // std::cout << slot << std::endl;
+        
 
         
         // Search left
