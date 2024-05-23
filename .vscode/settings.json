@@ -54,6 +54,8 @@
         "cstring": "cpp",
         "set": "cpp",
         "unordered_set": "cpp",
-        "iomanip": "cpp"
+        "iomanip": "cpp",
+        "condition_variable": "cpp",
+        "mutex": "cpp"
     }
 }

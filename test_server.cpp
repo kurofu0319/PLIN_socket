@@ -161,18 +161,50 @@ void prependSizeToBuffer(std::vector<char>& buffer) {
     buffer.insert(buffer.begin(), sizeBytes.begin(), sizeBytes.end());
 }
 
-int sendPayload(int sock, _payload_t payload) {
-    const char* buffer = reinterpret_cast<const char*>(&payload);
+int sendPayloads(int sock, const std::vector<_payload_t>& payloads) {
     size_t payloadSize = sizeof(_payload_t); // 获取_payload_t类型的大小
+    size_t totalPayloadSize = payloadSize * payloads.size(); // 计算全部有效载荷的总大小
+    size_t totalSize = totalPayloadSize + sizeof(uint32_t);
 
-    ssize_t bytesSent = send(sock, buffer, payloadSize, 0); // 发送_payload
+    // 创建一个足够大的缓冲区来存储大小信息和所有有效载荷
+    std::vector<char> buffer(totalSize);
+    char* bufferPtr = buffer.data();
+
+    // 先将总数据大小放入缓冲区
+    uint32_t totalSizeNetwork = htonl(static_cast<uint32_t>(totalPayloadSize));
+    std::memcpy(bufferPtr, &totalSizeNetwork, sizeof(totalSizeNetwork));
+    bufferPtr += sizeof(totalSizeNetwork);
+
+    // 将所有有效载荷复制到缓冲区中
+    for (const auto& payload : payloads) {
+        std::memcpy(bufferPtr, &payload, payloadSize);
+        bufferPtr += payloadSize;
+    }
+
+    // 发送整个缓冲区内容
+    ssize_t bytesSent = send(sock, buffer.data(), totalSize, 0);
     if (bytesSent == -1) {
-        std::cerr << "Failed to send payload" << std::endl;
+        std::cerr << "Failed to send payloads" << std::endl;
         return -1; // 发送失败
     }
 
     return 0; // 发送成功
 }
+
+
+
+// int sendPayload(int sock, _payload_t payload) {
+//     const char* buffer = reinterpret_cast<const char*>(&payload);
+//     size_t payloadSize = sizeof(_payload_t); // 获取_payload_t类型的大小
+
+//     ssize_t bytesSent = send(sock, buffer, payloadSize, 0); // 发送_payload
+//     if (bytesSent == -1) {
+//         std::cerr << "Failed to send payload" << std::endl;
+//         return -1; // 发送失败
+//     }
+
+//     return 0; // 发送成功
+// }
 
 void handle_client(TestIndex& testIndex, int client_socket, std::vector<char>& buffer) {
 
@@ -184,51 +216,77 @@ void handle_client(TestIndex& testIndex, int client_socket, std::vector<char>& b
         // std::cout << "message deserialized" << std::endl;
 
         if (receivedMsg.type == Client_message::META) {
+            std::cout << "META" << std::endl;
             send(client_socket, buffer.data(), buffer.size(), 0);
 
         }
         else if (receivedMsg.type == Client_message::LOOKUP) {
-            // std::cout << "LOOKUP" << std::endl;
-            std::vector<int> leaf_path = receivedMsg.leaf_path;
-            _key_t key = receivedMsg.key;
-            // std::cout << "key: " << key << std::endl;
-            _payload_t payload = testIndex.find_Payload(leaf_path, key);
-
-            // _payload_t ans;
-            // bool found = testIndex.find(key, ans);
-            // std::cout << "found: " << found << std::endl;
-
-            
-            sendPayload(client_socket, payload);
-
+            std::vector<_payload_t> payloads;
+            for (size_t i = 0; i < receivedMsg.batch_size; ++i) {
+                payloads.push_back(testIndex.find_Payload(receivedMsg.leaf_paths[i], receivedMsg.keys[i]));
+            }
+            sendPayloads(client_socket, payloads);
+        }
+        else if (receivedMsg.type == Client_message::RAW_KEY) {
+            std::vector<_payload_t> payloads;
+            for (size_t i = 0; i < receivedMsg.batch_size; ++i) {
+                _payload_t payload;
+                testIndex.find(receivedMsg.keys[i], payload);
+                payloads.push_back(payload);
+            }
+            sendPayloads(client_socket, payloads);
+        }
+        else if (receivedMsg.type == Client_message::INSERT) {
+            std::cout << "INSERT" << std::endl;
+            for (size_t i = 0; i < receivedMsg.batch_size; ++i) {
+                testIndex.upsert(receivedMsg.keys[i], receivedMsg.payloads[i]);
+            }
+            // Optionally, confirm back to the client that the insert was successful
+            // sendBatchInsertConfirmation(client_socket, receivedMsg.batch_size);
         }
         else if (receivedMsg.type == Client_message::INVALID) {
             break;
         }
-        else if (receivedMsg.type == Client_message::RAW_KEY) {
-            _key_t key = receivedMsg.key;
-            _payload_t payload;
-            testIndex.find(key, payload);
-            sendPayload(client_socket, payload);
-        }
-        else if (receivedMsg.type == Client_message::INSERT) {
-            std::cout << "INSERT" << std::endl;
-            _key_t key = receivedMsg.key;
-            _payload_t payload = receivedMsg.payload;
-            // std::cout << "true key: " << key << std::endl;
-            // std::cout << "true payload: " << payload << std::endl;
-            _payload_t ans;
+        // else if (receivedMsg.type == Client_message::LOOKUP) {
+        //     // std::cout << "LOOKUP" << std::endl;
+        //     std::vector<int> leaf_path = receivedMsg.leaf_path;
+        //     _key_t key = receivedMsg.key;
+        //     // std::cout << "key: " << key << std::endl;
+        //     _payload_t payload = testIndex.find_Payload(leaf_path, key);
 
-            std::vector<int> leaf_path = receivedMsg.leaf_path;
-            testIndex.upsert(key, payload);
-            // testIndex.find(key, ans);
-            // if (ans != payload)
-            //     std::cout << "upsert wrong!" << std::endl;
-            // else 
-            //     std::cout << "upsert wrong!" << std::endl;
+        //     // _payload_t ans;
+        //     // bool found = testIndex.find(key, ans);
+        //     // std::cout << "found: " << found << std::endl;
 
-            sendPayload(client_socket, payload);
-        }
+            
+        //     sendPayload(client_socket, payload);
+
+        // }
+        
+        // else if (receivedMsg.type == Client_message::RAW_KEY) {
+        //     _key_t key = receivedMsg.key;
+        //     _payload_t payload;
+        //     testIndex.find(key, payload);
+        //     sendPayload(client_socket, payload);
+        // }
+        // else if (receivedMsg.type == Client_message::INSERT) {
+        //     std::cout << "INSERT" << std::endl;
+        //     _key_t key = receivedMsg.key;
+        //     _payload_t payload = receivedMsg.payload;
+        //     // std::cout << "true key: " << key << std::endl;
+        //     // std::cout << "true payload: " << payload << std::endl;
+        //     _payload_t ans;
+
+        //     std::vector<int> leaf_path = receivedMsg.leaf_path;
+        //     testIndex.upsert(key, payload);
+        //     // testIndex.find(key, ans);
+        //     // if (ans != payload)
+        //     //     std::cout << "upsert wrong!" << std::endl;
+        //     // else 
+        //     //     std::cout << "upsert wrong!" << std::endl;
+
+        //     sendPayload(client_socket, payload);
+        // }
 
     }
 
