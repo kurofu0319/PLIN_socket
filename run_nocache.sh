@@ -2,11 +2,11 @@ start_time=$(date +%s)
 
 echo "Running script..."
 
-./test_client 8080 1e7 1e7 1 10000 &
-./test_client 8080 1e7 1e7 1 10000 &
-./test_client 8080 1e7 1e7 1 10000 &
-./test_client 8080 1e7 1e7 1 10000 &
-./test_client 8080 1e7 1e7 1 10000 
+./test_client 8080 1e7 1e7 3 10000 &
+./test_client 8080 1e7 1e7 3 10000 &
+./test_client 8080 1e7 1e7 3 10000 &
+./test_client 8080 1e7 1e7 3 10000 &
+./test_client 8080 1e7 1e7 3 10000 
 
 
 end_time=$(date +%s)

@@ -9,7 +9,7 @@
 
 class Client_message {
 public:
-    enum Type { META, LOOKUP, INSERT, INVALID, RAW_KEY };
+    enum Type { META, LOOKUP, INSERT, INVALID, RAW_KEY, RAW_INSERT };
 
     Type type;
     std::vector<_key_t> keys;
@@ -53,6 +53,12 @@ public:
         this->keys = keys;
         this->payloads = payloads;
         this->leaf_paths = paths;
+    }
+
+    Client_message(const std::vector<_key_t>& keys, const std::vector<_payload_t>& payloads, size_t batch_size)
+        : Client_message(RAW_INSERT, batch_size, level) {
+        this->keys = keys;
+        this->payloads = payloads;
     }
 
     ~Client_message() {}  

@@ -132,6 +132,7 @@ class PlinIndex
         plin_metadata *old_plin_ = NULL;
         InnerSlot roots[ROOT_SIZE];
         split_log logs[LOG_NUMBER];
+        LeafNode** leaf_nodes;
 
         inline bool get_write_lock()
         {
@@ -463,10 +464,11 @@ public:
         // Build leaf nodes
         uint64_t start_pos = 0;
         auto first_keys = new _key_t[last_n];
-        auto leaf_nodes = new LeafNode *[last_n];
+        plin_->leaf_nodes = new LeafNode *[last_n];
         auto accelerators = new InnerSlot[last_n];
         LeafNode *prev = NULL;
-        for (uint64_t i = 0; i < last_n; ++i)
+        uint64_t i;
+        for (i = 0; i < last_n; ++i)
         {
             uint64_t block_number = (uint64_t)segments[i].number / (LEAF_NODE_INIT_RATIO * LeafNode::LeafRealSlotsPerBlock) + 3;
             uint64_t node_size_in_byte = block_number * BLOCK_SIZE + NODE_HEADER_SIZE;
@@ -477,9 +479,9 @@ public:
 
             void* allocated_memory = malloc(node_size_in_byte);
             
-            leaf_nodes[i] = new (allocated_memory) LeafNode(accelerators[i], block_number, keys, payloads, segments[i].number, start_pos, segments[i].slope, segments[i].intercept, plin_->global_version, prev);
+            plin_->leaf_nodes[i] = new (allocated_memory) LeafNode(accelerators[i], block_number, keys, payloads, segments[i].number, start_pos, segments[i].slope, segments[i].intercept, plin_->global_version, prev);
             
-            
+            accelerators[i].leaf_number = i;
             
 
             // printf("%f\n", leaf_nodes[i]->get_min_key());
@@ -493,21 +495,21 @@ public:
 
 
             
-            prev = leaf_nodes[i];
+            prev = plin_->leaf_nodes[i];
         }
 
         //std::cout << "leaf successful" << std::endl;
 
         for (uint64_t i = 0; i < last_n - 1; ++i)
         {
-            leaf_nodes[i]->set_next(leaf_nodes[i + 1]);
+            plin_->leaf_nodes[i]->set_next(plin_->leaf_nodes[i + 1]);
         }
 
         plin_->leaf_number = last_n;
 
         // std::cout << "leaf number: " << last_n << std::endl;
 
-        delete[] leaf_nodes;
+        // delete[] leaf_nodes;
 
         // Build inner nodes recursively
         uint32_t level = 0;
@@ -658,13 +660,16 @@ public:
             // std::cout << "find path" << std::endl;
             // std::cout << "root: " << i << std::endl; 
 
-            leaf_path.push_back(i);
+            // leaf_path.push_back(i);
 
             // std::cout << "push_back: "<< i << std::endl;
 
             if (accelerator->type()) {
                 (reinterpret_cast<InnerNode *>(accelerator->ptr))->get_Leaf_path(key, accelerator, leaf_path);
                 
+            }
+            else {
+                leaf_path.push_back(accelerator->leaf_number);
             }
         }   
     }
@@ -752,7 +757,8 @@ public:
         
     // }
 
-    void upsert_Path(_key_t key, _payload_t payload, std::vector<int> leaf_path) {
+    void upsert_Path(_key_t key, _payload_t payload, std::vector<int>& leaf_path, 
+                        uint32_t cur_ptr, uint32_t level) {
 
         
 
@@ -760,19 +766,11 @@ public:
             uint32_t ret;
             do {
 
-            
-
-            int i = 0;
             _payload_t ans;
-            InnerSlot *accelerator = &plin_->roots[leaf_path[i]];
-            i ++ ;
+            InnerSlot *accelerator = &plin_->roots[leaf_path[cur_ptr]];
 
-            while (accelerator->type() && i < leaf_path.size())
-            {
-                accelerator = (reinterpret_cast<InnerNode *>(accelerator->ptr))->get_Slot(leaf_path[i]);
-                i ++ ;
-            }
-
+            for (int i = 1; i <= level; i ++ )
+                accelerator = (reinterpret_cast<InnerNode *>(accelerator->ptr))->get_Slot(leaf_path[cur_ptr + i]);
 
                 LeafNode *leaf_to_split;
                 // ret = 1 : update in a slot; ret = 2 : insert in a free slot; ret = 3 : update in overflow block; ret = 4 : insert in overflow block;

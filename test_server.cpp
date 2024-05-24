@@ -191,20 +191,11 @@ int sendPayloads(int sock, const std::vector<_payload_t>& payloads) {
     return 0; // 发送成功
 }
 
+void send_insert_Confirmation(int client_socket, size_t batch_size) {
+    std::string confirmation = "Confirmation: " + std::to_string(batch_size) + " items inserted successfully.";
+    send(client_socket, confirmation.c_str(), confirmation.size(), 0);
+}
 
-
-// int sendPayload(int sock, _payload_t payload) {
-//     const char* buffer = reinterpret_cast<const char*>(&payload);
-//     size_t payloadSize = sizeof(_payload_t); // 获取_payload_t类型的大小
-
-//     ssize_t bytesSent = send(sock, buffer, payloadSize, 0); // 发送_payload
-//     if (bytesSent == -1) {
-//         std::cerr << "Failed to send payload" << std::endl;
-//         return -1; // 发送失败
-//     }
-
-//     return 0; // 发送成功
-// }
 
 void handle_client(TestIndex& testIndex, int client_socket, std::vector<char>& buffer) {
 
@@ -251,12 +242,22 @@ void handle_client(TestIndex& testIndex, int client_socket, std::vector<char>& b
             sendPayloads(client_socket, payloads);
         }
         else if (receivedMsg.type == Client_message::INSERT) {
-            std::cout << "INSERT" << std::endl;
+            // std::cout << "INSERT" << std::endl;
+            uint32_t level = receivedMsg.level;
+            for (size_t i = 0; i < receivedMsg.batch_size; ++i) {
+                
+                testIndex.upsert_Path(receivedMsg.keys[i], receivedMsg.payloads[i], receivedMsg.leaf_paths, i * (level + 1), level);
+            }
+            // Optionally, confirm back to the client that the insert was successful
+            send_insert_Confirmation(client_socket, receivedMsg.batch_size);
+        }
+        else if (receivedMsg.type == Client_message::RAW_INSERT) {
+            // std::cout << "INSERT" << std::endl;
             for (size_t i = 0; i < receivedMsg.batch_size; ++i) {
                 testIndex.upsert(receivedMsg.keys[i], receivedMsg.payloads[i]);
             }
             // Optionally, confirm back to the client that the insert was successful
-            // sendBatchInsertConfirmation(client_socket, receivedMsg.batch_size);
+            send_insert_Confirmation(client_socket, receivedMsg.batch_size);
         }
         else if (receivedMsg.type == Client_message::INVALID) {
             break;

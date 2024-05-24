@@ -17,6 +17,7 @@ struct InnerSlot {
     void * ptr;
     double slope;
     float intercept;
+    uint32_t leaf_number;
 
     // info[31]: write lock, info[30]: read lock, info[29]: type, info[28:0]: block_number
     uint32_t info;
