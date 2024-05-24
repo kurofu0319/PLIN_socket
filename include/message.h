@@ -14,8 +14,9 @@ public:
     Type type;
     std::vector<_key_t> keys;
     std::vector<_payload_t> payloads;
-    std::vector<std::vector<int>> leaf_paths;
+    std::vector<int> leaf_paths;
     size_t batch_size;
+    uint32_t level;
 
     static const Client_message InvalidMessage;
 
@@ -32,30 +33,29 @@ public:
     // Client_message(size_t batch_size) : batch_size(batch_size), keys(batch_size), 
     //                 payloads(batch_size), leaf_paths(batch_size) {}
 
-    Client_message(Type t = META , size_t batch_size = 0) 
-        : type(t), batch_size(batch_size), keys(batch_size), payloads(batch_size), leaf_paths(batch_size) {}
+    Client_message(Type t = META , size_t batch_size = 1, uint32_t level = 1) 
+        : type(t), batch_size(batch_size), level(level), keys(batch_size), payloads(batch_size), leaf_paths(batch_size * (level + 1)) {}
 
-    // 简化重复代码，利用委托构造函数
     Client_message(const std::vector<_key_t>& keys, size_t batch_size)
         : Client_message(RAW_KEY, batch_size) {
         this->keys = keys;
     }
 
-    Client_message(const std::vector<std::vector<int>>& paths, const std::vector<_key_t>& keys, size_t batch_size)
-        : Client_message(LOOKUP, batch_size) {
+    Client_message(const std::vector<int>& paths, const std::vector<_key_t>& keys, size_t batch_size, uint32_t level)
+        : Client_message(LOOKUP, batch_size, level) {
         this->keys = keys;
         this->leaf_paths = paths;
     }
 
     Client_message(const std::vector<_key_t>& keys, const std::vector<_payload_t>& payloads, 
-                   const std::vector<std::vector<int>>& paths, size_t batch_size)
-        : Client_message(INSERT, batch_size) {
+                   const std::vector<int>& paths, size_t batch_size, uint32_t level = 1)
+        : Client_message(INSERT, batch_size, level) {
         this->keys = keys;
         this->payloads = payloads;
         this->leaf_paths = paths;
     }
 
-    ~Client_message() {}  // 简洁析构函数，通常无需更改除非有特殊资源管理需要
+    ~Client_message() {}  
 
     // 确保默认拷贝和移动构造函数和赋值操作符不被删除
     Client_message(const Client_message&) = default;
@@ -64,29 +64,30 @@ public:
     Client_message& operator=(Client_message&&) = default;
 
     std::string serialize() const {
-        
         std::ostringstream content;
         content.write(reinterpret_cast<const char*>(&type), sizeof(Type));
-        content.write(reinterpret_cast<const char*>(&batch_size), sizeof(batch_size));
+        content.write(reinterpret_cast<const char*>(&batch_size), sizeof(size_t));
+        content.write(reinterpret_cast<const char*>(&level), sizeof(uint32_t));
 
-        for (size_t i = 0; i < batch_size; i++) {
-            content.write(reinterpret_cast<const char*>(&keys[i]), sizeof(_key_t));
-            content.write(reinterpret_cast<const char*>(&payloads[i]), sizeof(_payload_t));
+        content.write(reinterpret_cast<const char*>(keys.data()), sizeof(_key_t) * batch_size);
+        content.write(reinterpret_cast<const char*>(payloads.data()), sizeof(_payload_t) * batch_size);
+        content.write(reinterpret_cast<const char*>(leaf_paths.data()), sizeof(int) * batch_size * (level + 1));
 
-            uint32_t leafPathSize = htonl(leaf_paths[i].size());
-            content.write(reinterpret_cast<const char*>(&leafPathSize), sizeof(leafPathSize));
-            for (int value : leaf_paths[i]) {
-                content.write(reinterpret_cast<const char*>(&value), sizeof(int));
-            }
-        }
+        // std::cout << "serialize leaf path: " << std::endl;
+
+        // for (int i : leaf_paths) {
+        //     std::cout << i << " ";
+        // }
+        // std::cout << std::endl;
+
 
         std::string serializedData = content.str();
-        uint32_t totalLength = htonl(serializedData.size() + sizeof(uint32_t));
+        uint32_t totalLength = htonl(serializedData.size());
         std::ostringstream serializedMessage;
         serializedMessage.write(reinterpret_cast<const char*>(&totalLength), sizeof(totalLength));
         serializedMessage << serializedData;
 
-        
+        // std::cout << "serialize data size: " << serializedData.size() << std::endl;
 
         return serializedMessage.str();
     }
@@ -95,29 +96,32 @@ public:
         std::istringstream ss(serializedData);
         Type t;
         size_t batch_size;
+        uint32_t level;
 
         ss.read(reinterpret_cast<char*>(&t), sizeof(Type));
-        ss.read(reinterpret_cast<char*>(&batch_size), sizeof(batch_size));
+        ss.read(reinterpret_cast<char*>(&batch_size), sizeof(size_t));
+        ss.read(reinterpret_cast<char*>(&level), sizeof(uint32_t));
+
+        // std::cout << "batch size: " << batch_size << std::endl;
+        // std::cout << "level: " << level << std::endl;
 
         std::vector<_key_t> keys(batch_size);
         std::vector<_payload_t> payloads(batch_size);
-        std::vector<std::vector<int>> leaf_paths(batch_size);
+        std::vector<int> leaf_paths(batch_size * (level + 1));
 
-        for (size_t i = 0; i < batch_size; i++) {
-            ss.read(reinterpret_cast<char*>(&keys[i]), sizeof(_key_t));
-            ss.read(reinterpret_cast<char*>(&payloads[i]), sizeof(_payload_t));
+        ss.read(reinterpret_cast<char*>(keys.data()), sizeof(_key_t) * batch_size);
+        ss.read(reinterpret_cast<char*>(payloads.data()), sizeof(_payload_t) * batch_size);
+        ss.read(reinterpret_cast<char*>(leaf_paths.data()), sizeof(int) * batch_size * (level + 1));
 
-            uint32_t leafPathSize;
-            ss.read(reinterpret_cast<char*>(&leafPathSize), sizeof(leafPathSize));
-            leafPathSize = ntohl(leafPathSize);
+        
+        // std::cout << "deserialize leaf path: " << std::endl;
 
-            leaf_paths[i].resize(leafPathSize);
-            for (uint32_t j = 0; j < leafPathSize; j++) {
-                ss.read(reinterpret_cast<char*>(&leaf_paths[i][j]), sizeof(int));
-            }
-        }
+        // for (int i : leaf_paths) {
+        //     std::cout << i << std::endl;
+        // }
+        // std::cout << std::endl;
 
-        Client_message msg(t, batch_size);
+        Client_message msg(t, batch_size, level);
         msg.keys = std::move(keys);
         msg.payloads = std::move(payloads);
         msg.leaf_paths = std::move(leaf_paths);
@@ -188,6 +192,14 @@ void sendClientMessage(int sock, const Client_message& msg) {
     }
 }
 
+void sendClientMessage(int sock, std::string data) {
+
+    if (send(sock, data.c_str(), data.size(), 0) == -1) {
+        std::cerr << "Error sending data\n";
+        close(sock);
+    }
+}
+
 Client_message receiveAndDeserialize(int sock) {
     uint32_t dataLength;
     if (recv(sock, &dataLength, sizeof(dataLength), 0) <= 0) {
@@ -198,7 +210,7 @@ Client_message receiveAndDeserialize(int sock) {
 
     dataLength = ntohl(dataLength); 
 
-    dataLength -= sizeof(uint32_t);
+    // std::cout << "deserialized data length: " << dataLength << std::endl;
 
     std::vector<char> buffer(dataLength);
     size_t totalReceived = 0;

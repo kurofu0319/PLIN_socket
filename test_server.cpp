@@ -209,6 +209,8 @@ int sendPayloads(int sock, const std::vector<_payload_t>& payloads) {
 void handle_client(TestIndex& testIndex, int client_socket, std::vector<char>& buffer) {
 
     std::cout << "thread: " << client_socket << std::endl;
+    
+    uint32_t level = testIndex.get_level();
 
     while (true) {
         Client_message receivedMsg = receiveAndDeserialize(client_socket);
@@ -221,10 +223,22 @@ void handle_client(TestIndex& testIndex, int client_socket, std::vector<char>& b
 
         }
         else if (receivedMsg.type == Client_message::LOOKUP) {
+            // std::cout << "LOOKUP" << std::endl;
             std::vector<_payload_t> payloads;
+            // auto findPath_start = std::chrono::high_resolution_clock::now();
             for (size_t i = 0; i < receivedMsg.batch_size; ++i) {
-                payloads.push_back(testIndex.find_Payload(receivedMsg.leaf_paths[i], receivedMsg.keys[i]));
+                _payload_t payload;
+                // std::cout << "leaf path size: " << receivedMsg.leaf_paths.size() << std::endl;
+                
+                payload = testIndex.find_Payload(receivedMsg.leaf_paths, receivedMsg.keys[i], i * (level + 1), level);
+                
+
+                // testIndex.find(receivedMsg.keys[i], payload);
+                payloads.push_back(payload);
             }
+            // auto findPath_end = std::chrono::high_resolution_clock::now();
+            // auto receive_duration = std::chrono::duration_cast<std::chrono::milliseconds>(findPath_end - findPath_start);
+            // std::cout << "find payload time: " << receive_duration.count() << std::endl;
             sendPayloads(client_socket, payloads);
         }
         else if (receivedMsg.type == Client_message::RAW_KEY) {

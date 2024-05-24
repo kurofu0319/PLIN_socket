@@ -6,98 +6,15 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <string.h>
+#include <future>
+#include <algorithm>
 
 
 #include "include/plin_index.h"
 #include "include/message.h"
+#include "include/TaskScheduler.h"
 
 using TestIndex = PlinIndex;
-// PMAllocator * galc;
-
-void run_search_test(TestIndex& test_index, _key_t* keys, _payload_t* payloads, size_t number){
-    std::mt19937 search_gen(123);
-    std::uniform_int_distribution<size_t> search_dist(0, number - 1);
-    int count = 0 , false_count = 0;
-    
-    for(size_t i = 0; i < 1e6; i++){
-        // size_t target_pos = search_dist(search_gen);
-
-        size_t target_pos = i;
-        
-        // _key_t target_key = keys[target_pos];
-        _key_t target_key = keys[target_pos];
-        _payload_t answer;
-        
-        bool ans = test_index.find(target_key, answer);
-
-        // std::cout << answer << std::endl;
-        // std::cout << payloads[target_pos] << std::endl << std::endl;
-        
-        if (ans == false) 
-        {
-            std::cout << target_key << std::endl;
-            
-            false_count ++ ;
-        }
-        if(answer != payloads[i]){
-            count ++ ;
-            
-            // std::cout<<"#Number: "<<i<<std::endl;
-            // std::cout<<"#Wrong answer: "<<answer<<std::endl;
-            // std::cout<<"#Correct answer: "<<payloads[target_pos]<<std::endl;
-            // test_index.find(target_key, answer);
-            // throw std::logic_error("Answer wrong!");
-        }
-    }
-    std::cout << "wrong count: " << count << std::endl;
-    std::cout << "false count: " << false_count << std::endl;
-}
-
-void run_upsert_test(TestIndex& test_index, _key_t* keys, _payload_t* payloads, size_t number){
-    std::normal_distribution<_key_t> key_dist(0, 1e10);
-    std::uniform_int_distribution<_payload_t> payload_dist(0,1e9);
-    std::mt19937 key_gen(time(NULL));
-    std::mt19937 payload_gen(time(NULL));
-
-    size_t upsert_times = 1e7;
-    _key_t* new_keys = new _key_t[upsert_times];
-    _payload_t* new_payloads = new _payload_t[upsert_times];
-    for(size_t i = 0; i < upsert_times; i++){
-        new_keys[i] = key_dist(key_gen);
-        new_payloads[i] = payload_dist(payload_gen);
-        test_index.upsert(new_keys[i], new_payloads[i]);
-    }
-
-    for(size_t i = 0; i < upsert_times; i++){
-        _payload_t answer;
-        test_index.find(new_keys[i], answer);
-        if(answer != new_payloads[i]){
-            // std::cout<<"#Number: "<<i<<std::endl;
-            // std::cout<<"#Key: "<<new_keys[i]<<std::endl;
-            // std::cout<<"#Wrong answer: "<<answer<<std::endl;
-            // std::cout<<"#Correct answer: "<<new_payloads[i]<<std::endl;
-            // test_index.find(new_keys[i], answer);
-            // throw std::logic_error("Answer wrong!");
-            count ++ ;
-        }
-    }
-}
-
-void sendSerializedData(const std::vector<char>& buffer, int client_socket) {
-
-    size_t totalSent = 0;
-    while (totalSent < buffer.size()) {
-        ssize_t sent = send(client_socket, buffer.data() + totalSent, buffer.size() - totalSent, 0);
-        if (sent == -1) {
-            std::cerr << "Failed to send data" << std::endl;
-            break;
-        }
-        totalSent += sent;
-    }
-}
-
-    // std::cout << "wrong count: " << count << std::endl;
-    // std::cout << "false count: " << false_count << std::endl;
 
 void initialize_data(size_t number, _key_t*& keys, _payload_t*& payloads) {
     std::mt19937 key_gen(456); 
@@ -110,20 +27,6 @@ void initialize_data(size_t number, _key_t*& keys, _payload_t*& payloads) {
     keys = new _key_t[number];
     payloads = new _payload_t[number];
 
-    // _key_t key = 0;
-    // for (size_t i = 0; i < number; ++ i) {
-    //     key += dist(gen);
-    //     keys[i] = key;
-    //     payloads[i] = key;
-    // }
-
-    // std::vector<std::pair<_key_t, _payload_t>> kv_pairs(number);
-
-    // _key_t key = 0;
-    // for (size_t i = 0; i < number; ++i) {
-    //     kv_pairs[i] = std::make_pair(key_dist(gen), payload_dist(gen));
-    // }
-    // std::sort(kv_pairs.begin(), kv_pairs.end());
     for (size_t i = 0; i < number; ++i) {
         keys[i] = key_dist(key_gen);
         payloads[i] = payload_dist(payload_gen);
@@ -135,7 +38,7 @@ int start_client(int port) {
     int sock = 0, valread;
     struct sockaddr_in serv_addr;
     char buffer[1024] = {0};
-    std::string ipAddress = "127.0.0.1"; // 服务器的 IP 地址
+    std::string ipAddress = "127.0.0.1"; 
 
     if ((sock = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
         std::cout << "Socket creation error" << std::endl;
@@ -145,7 +48,6 @@ int start_client(int port) {
     serv_addr.sin_family = AF_INET;
     serv_addr.sin_port = htons(port);
 
-    // 将地址从文本转换为二进制形式
     if(inet_pton(AF_INET, ipAddress.c_str(), &serv_addr.sin_addr)<=0) {
         std::cout << "Invalid address/ Address not supported" << std::endl;
         return -1;
@@ -250,117 +152,131 @@ int receivePayloads(int sock, std::vector<_payload_t>& payloads, size_t batch_si
     return 0; // 接收成功
 }
 
+void lookup_Preparation(TaskScheduler& scheduler, PlinIndex& test_index, _key_t* keys, _payload_t* payloads, 
+                           size_t number, size_t test_size, size_t batch_size, bool cache) {
+    std::mt19937 gen(123);
+    std::uniform_int_distribution<size_t> dist(0, number - 1);
+    uint32_t level = test_index.get_level();
 
-// int receivePayload(int sock, _payload_t& payload) {
-//     char buffer[sizeof(_payload_t)]; // 创建一个足够存放_payload_t类型的缓冲区
-//     ssize_t bytesReceived = recv(sock, buffer, sizeof(_payload_t), 0);
+    // std::cout << "level: " << level << std::endl;
+    // std::cout << "test_size: " << test_size << std::endl;
+    // std::cout << "batch_size: " << batch_size << std::endl;
+
+    std::vector<_key_t> batch_keys;
+    std::vector<_payload_t> batch_payloads;
+    std::vector<int> leaf_paths;
+    std::string message;
+
+    for (size_t i = 0; i < test_size; i += batch_size) {
+        // std::cout << "batch_size: " << i << std::endl;
+        size_t real_batch_size = std::min(batch_size, test_size - i);
+        batch_keys.clear();
+        batch_payloads.clear();
+        
+
+        
+        if (cache == true) {
+            leaf_paths.clear();
+            for (size_t j = 0; j < real_batch_size; ++j) {
+                size_t target_pos = dist(gen);
+                batch_keys.push_back(keys[target_pos]);
+                batch_payloads.push_back(payloads[target_pos]);
+                test_index.find_Path(batch_keys[j], leaf_paths); 
+            }
+        }
+        else {
+            for (size_t j = 0; j < real_batch_size; ++j) {
+                size_t target_pos = dist(gen);
+                batch_keys.push_back(keys[target_pos]);
+                batch_payloads.push_back(payloads[target_pos]);
+            }
+
+            // std::cout << "generate kv" << std::endl;
+            
+        }
+        
+        
+        
+
+        if (cache == true) {
+            Client_message msg(leaf_paths, batch_keys, real_batch_size, level);
+            message = msg.serialize();
+        }
+            
+        else {
+            Client_message msg(batch_keys, real_batch_size);
+            message = msg.serialize();
+            // std::cout << "serialized" << std::endl;
+        }
     
-//     if (bytesReceived == -1) {
-//         std::cerr << "Failed to receive payload" << std::endl;
-//         return -1; // 接收失败
-//     }
-//     if (bytesReceived != sizeof(_payload_t)) {
-//         std::cerr << "Received incomplete data" << std::endl;
-//         return -1; // 数据未完全接收
-//     }
+        auto data = std::make_tuple(message, real_batch_size, batch_payloads);
 
-//     payload = *reinterpret_cast<_payload_t*>(buffer); // 将接收到的字节流转换回_payload_t类型
-//     return 0; // 接收成功
-// }
+        // std::cout << "adding Task: " << i << std::endl;
+        
+        scheduler.addTask(std::move(data));
 
-// _payload_t GetPayloads(int server_sock, std::vector<int> leaf_path, _key_t key) {
+        // std::cout << "add Task: " << i << std::endl;
+        
+    }
+}
 
-//     _payload_t ans;
+void lookup_sendMessage(int sock, TaskScheduler& scheduler, size_t test_size, size_t batch_size) {
+    int false_count = 0;
+    
+    std::chrono::milliseconds receive_duration(0);
 
-//     Client_message msg(leaf_path, key);
+    size_t processed = 0;
+    while (processed < test_size) {
+        auto [message, real_batch_size, batch_payloads] = scheduler.getTask();
+        // std::cout << "get Task" << std::endl;
 
-//     // std::cout << "get payload leaf_path: " << std::endl;
-//     // for (int path : msg.leaf_path) {
-//     //     std::cout << path ;
-//     // }
-//     // std::cout << std::endl;
+        auto findPath_start = std::chrono::high_resolution_clock::now();
+        sendClientMessage(sock, message);
+        std::vector<_payload_t> recv_payloads(real_batch_size);
+        
 
-//     sendClientMessage(server_sock, msg);
+        receivePayloads(sock, recv_payloads, real_batch_size);
+        auto findPath_end = std::chrono::high_resolution_clock::now();
+        receive_duration += std::chrono::duration_cast<std::chrono::milliseconds>(findPath_end - findPath_start);
+        
+        
 
-//     receivePayload(server_sock, ans);
+        for (size_t j = 0; j < real_batch_size; ++j) {
+            if (recv_payloads[j] != batch_payloads[j]) {
+                std::cout << "Wrong payload!" << std::endl;
+                false_count++;
+            }
+        }
+        processed += real_batch_size;
+    }
 
-//     return ans;
-// }
+    std::cout << "receive time: " << receive_duration.count() << " milliseconds" << std::endl;
+}
 
 void run_search_test_client(int sock, TestIndex& test_index, _key_t* keys, _payload_t* payloads, 
-                            size_t number, size_t test_size, size_t batch_size){
-    std::mt19937 search_gen(123);
-    std::uniform_int_distribution<size_t> search_dist(0, number - 1);
-    int count = 0 , false_count = 0;
+                            size_t number, size_t test_size, size_t batch_size, bool cache) {
 
+    TaskScheduler scheduler;
     auto start = std::chrono::high_resolution_clock::now();
-    
-    for(size_t i = 0; i < test_size; i += batch_size){ 
 
-        size_t percentage = test_size / 10;
-        if (i % percentage == 0) 
-            std::cout << i / percentage * 10 << " percentage finished." << std::endl;
+    std::thread prepThread(lookup_Preparation, std::ref(scheduler), std::ref(test_index), keys, payloads, 
+                            number, test_size, batch_size, cache);
+    std::thread commThread(lookup_sendMessage, sock, std::ref(scheduler), test_size, batch_size);
 
-        size_t real_batch_size = std::min(batch_size, test_size - i);
-        std::vector<_key_t> batch_keys(real_batch_size);
-        std::vector<_payload_t> batch_payloads(real_batch_size);
-        std::vector<std::vector<int>> leaf_paths(real_batch_size);
-
-        for (int j = 0; j < real_batch_size; ++ j) {
-            size_t target_pos = search_dist(search_gen);
-            batch_keys[j] = keys[target_pos];
-            batch_payloads[j] = payloads[target_pos];
-
-            test_index.find_Path(keys[target_pos], leaf_paths[j]);          
-        }
-
-        Client_message msg(leaf_paths, batch_keys, real_batch_size);
-        sendClientMessage(sock, msg);
-
-        std::vector<_payload_t> recv_payloads(real_batch_size);
-        receivePayloads(sock, recv_payloads, real_batch_size);
-
-        // std::cout << "receivePayloads " << std::endl;  
-        
-        for (int i = 0; i < batch_size; ++ i) {
-            if (recv_payloads[i] != batch_payloads[i]) {
-                std::cout << "Wrong payload!" << std::endl;
-                std::cout << "true answer: " << batch_payloads[i] << " false: " << recv_payloads[i] << std::endl;
-                false_count ++ ;
-            }
-                
-        }
-
-        // auto end = std::chrono::high_resolution_clock::now();
-        // auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-
-        // std::cout << "Duration time: " << duration.count() << " milliseconds" << std::endl;
-    }
-    std::cout << "false count: " << false_count << std::endl;
+    prepThread.join();
+    commThread.join();
 
     auto end = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-
-    std::cout << "Elapsed time: " << duration.count() << " milliseconds" << std::endl;
+    std::cout << "Total duration time: " << duration.count() << " milliseconds" << std::endl;
 }
-
-// _payload_t GetPayload_rawkey(int server_sock, _key_t key) {
-//     Client_message msg(key);
-//     _payload_t ans;
-
-//     sendClientMessage(server_sock, msg);
-
-//     receivePayload(server_sock, ans);
-
-//     return ans;
-
-// }
 
 void run_search_test_client_nocache(int sock, TestIndex& test_index, _key_t* keys, _payload_t* payloads, 
                                     size_t number, size_t test_size, size_t batch_size){
         std::mt19937 search_gen(123);
     std::uniform_int_distribution<size_t> search_dist(0, number - 1);
     int count = 0 , false_count = 0;
+    std::chrono::milliseconds no_findPath_duration(0);
 
     auto start = std::chrono::high_resolution_clock::now();
     
@@ -375,19 +291,26 @@ void run_search_test_client_nocache(int sock, TestIndex& test_index, _key_t* key
         std::vector<_payload_t> batch_payloads(real_batch_size);
         // std::vector<std::vector<int>> leaf_paths(real_batch_size);
 
+        
+
         for (int j = 0; j < real_batch_size; ++ j) {
             size_t target_pos = search_dist(search_gen);
             batch_keys[j] = keys[target_pos];
-            batch_payloads[j] = payloads[target_pos];
-
-            // test_index.find_Path(keys[target_pos], leaf_paths[j]);          
+            batch_payloads[j] = payloads[target_pos];         
         }
 
         Client_message msg(batch_keys, real_batch_size);
+        auto findPath_start = std::chrono::high_resolution_clock::now();
         sendClientMessage(sock, msg);
+        
+        
 
         std::vector<_payload_t> recv_payloads(real_batch_size);
+        
+        
         receivePayloads(sock, recv_payloads, real_batch_size);
+        auto findPath_end = std::chrono::high_resolution_clock::now();
+        no_findPath_duration += std::chrono::duration_cast<std::chrono::milliseconds>(findPath_end - findPath_start);
 
         // std::cout << "receivePayloads " << std::endl;  
         
@@ -406,6 +329,8 @@ void run_search_test_client_nocache(int sock, TestIndex& test_index, _key_t* key
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
 
     std::cout << "Elapsed time: " << duration.count() << " milliseconds" << std::endl;
+    std::cout << "No findPath receive time: " << no_findPath_duration.count() << " milliseconds" << std::endl;
+
 
 
     // std::mt19937 search_gen(123);
@@ -624,11 +549,12 @@ int main(int argc, char* argv[]) {
 
     if (mode == 0) {
         std::cout << "run with cache" << std::endl;
-        run_search_test_client(server_sock, testindex, keys, payloads, number, test_size, batch_size);
+        run_search_test_client(server_sock, testindex, keys, payloads, number, test_size, batch_size, true);
     }
     else if (mode == 1) {
         std::cout << "run without cache" << std::endl;
-        run_search_test_client_nocache(server_sock, testindex, keys, payloads, number, test_size, batch_size);
+        run_search_test_client(server_sock, testindex, keys, payloads, number, test_size, batch_size, false);
+        // run_search_test_client_nocache(server_sock, testindex, keys, payloads, number, test_size, batch_size);
     }
     // else if (mode == 3) {
     //     std::cout << "run upsert with cache" << std::endl;

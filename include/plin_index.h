@@ -292,6 +292,10 @@ public:
 
     ~PlinIndex() {}
 
+    uint32_t get_level() {
+        return plin_->level;
+    }
+
     void destroy()
     {
         LeafNode *cur = get_leftmost_leaf();
@@ -354,14 +358,16 @@ public:
     void serializePlinIndex(std::vector<char>& buffer) 
     {
         // Serialize metadata
-        size_t metaSize = sizeof(plin_->root_number) + sizeof(plin_->min_key) + sizeof(plin_->max_key); // etc.
+        size_t metaSize = sizeof(plin_->root_number) + sizeof(plin_->min_key) + sizeof(plin_->max_key) + sizeof(plin_->level); // etc.
         buffer.resize(metaSize);
         size_t offset = 0;
         memcpy(buffer.data(), &plin_->root_number, sizeof(plin_->root_number));
         offset += sizeof(plin_->root_number);
         memcpy(buffer.data() + offset, &plin_->min_key, sizeof(plin_->min_key));
         offset += sizeof(plin_->min_key);
-        memcpy(buffer.data() + offset, &plin_->max_key, sizeof(plin_->min_key));
+        memcpy(buffer.data() + offset, &plin_->max_key, sizeof(plin_->max_key));
+        offset += sizeof(plin_->max_key);
+        memcpy(buffer.data() + offset, &plin_->level, sizeof(plin_->level));
 
         // Serialize roots and logs
         for (int i = 0; i < plin_->root_number; ++i) {
@@ -399,6 +405,11 @@ public:
         if (offset + sizeof(plin_->max_key) <= buffer.size()) {
             memcpy(&plin_->max_key, buffer.data() + offset, sizeof(plin_->max_key));
             offset += sizeof(plin_->max_key);
+        }
+
+        if (offset + sizeof(plin_->max_key) <= buffer.size()) {
+            memcpy(&plin_->level, buffer.data() + offset, sizeof(plin_->level));
+            offset += sizeof(plin_->level);
         }
 
         
@@ -658,21 +669,14 @@ public:
         }   
     }
 
-    _payload_t find_Payload(std::vector<int> leaf_path,_key_t key) {
-
-        int i = 0;
+    _payload_t find_Payload(std::vector<int>& leaf_path,_key_t key, size_t cur_ptr, uint32_t level) {
         _payload_t ans;
-        InnerSlot *accelerator = &plin_->roots[leaf_path[i]];
-        i ++ ;
+        InnerSlot *accelerator = &plin_->roots[leaf_path[cur_ptr]];
 
-        while (accelerator->type() && i < leaf_path.size())
-        {
-            //std::cout << "find_leaf_node" << std::endl;
-            accelerator = (reinterpret_cast<InnerNode *>(accelerator->ptr))->get_Slot(leaf_path[i]);
-            i ++ ;
-        }
+        for (int i = 1; i <= level; ++ i)
+            accelerator = (reinterpret_cast<InnerNode *>(accelerator->ptr))->get_Slot(leaf_path[cur_ptr + i]);
 
-        while (true) {
+        do {
             if (accelerator->check_read_lock())
             {
                 //std::cout << "find" << std::endl;
@@ -688,7 +692,7 @@ public:
 
                 return ans;
             }
-        }
+        } while (true);
     }
 
     void range_query(_key_t lower_bound, _key_t upper_bound, std::vector<std::pair<_key_t, _payload_t>> &answers)
