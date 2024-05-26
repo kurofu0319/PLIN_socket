@@ -42,7 +42,7 @@ public:
         return predicted_block + 1;
     }
 
-    InnerNode(InnerSlot& accelerator, uint64_t block_number, _key_t* keys, InnerSlot* nodes, uint64_t number, uint64_t start_pos, double slope, double intercept, uint32_t level, bool rebuild = false) {
+    InnerNode(InnerSlot& accelerator, uint64_t block_number, _key_t* keys, InnerSlot* nodes, uint64_t number, uint64_t start_pos, double slope, double intercept, uint32_t level, std::vector<InnerSlot*> *last_slots = nullptr , bool rebuild = false) {
         // assert((uint64_t)inner_slots - (uint64_t)&inner_node == NODE_HEADER_SIZE);
         inner_node.block_number = block_number;
         inner_node.slope = slope / INNER_NODE_INIT_RATIO;
@@ -60,7 +60,7 @@ public:
         }
         // Model-based data placement
         for (uint64_t i = 0; i < number; ++i) {
-            data_placement(keys[start_pos + i], nodes[start_pos + i]);
+            last_slots->push_back(data_placement(keys[start_pos + i], nodes[start_pos + i]));
         }
         // do_flush(inner_slots, block_number * BLOCK_SIZE);
         // Build accelerator
@@ -246,12 +246,11 @@ public:
             --slot;
         }
 
-        
-
-        leaf_path.push_back(slot);
-
         if (inner_slots[slot].type()) {
             reinterpret_cast<InnerNode*>(inner_slots[slot].ptr)->get_Leaf_path(key, &inner_slots[slot], leaf_path);
+        }
+        else {
+            leaf_path.push_back(inner_slots[slot].leaf_number);
         }
 
     }
@@ -309,22 +308,24 @@ public:
         }
     }
 
-    void data_placement (_key_t key, InnerSlot node) {
+    InnerSlot* data_placement (_key_t key, InnerSlot node) {
         uint64_t slot = predict_block(key, inner_node.slope, inner_node.intercept, inner_node.block_number) * InnerSlotsPerBlock;
         for (uint32_t i = 0; i < InnerSlotsPerBlock; ++i) {
             if (inner_slots[slot + i].min_key == FREE_FLAG) {                
                 inner_slots[slot + i] = node;
-                return;
+                
+                return &inner_slots[slot + i];
             }
         }
         for (slot += InnerSlotsPerBlock; slot < inner_node.block_number * InnerSlotsPerBlock; slot++) {
             if (inner_slots[slot].min_key == FREE_FLAG) {                
                 inner_slots[slot] = node;
-                return;
+                
+                return &inner_slots[slot];
             }
         }
         assert(slot < inner_node.block_number * InnerSlotsPerBlock);
-        return;
+        return &inner_slots[slot];
     }
 
     LeafNode* get_leftmost_leaf(){

@@ -6,7 +6,16 @@ echo "Running script..."
 ./test_client 8080 1e7 1e7 2 10000 &
 ./test_client 8080 1e7 1e7 2 10000 &
 ./test_client 8080 1e7 1e7 2 10000 &
-./test_client 8080 1e7 1e7 2 10000 
+./test_client 8080 1e7 1e7 2 10000 &
+./test_client 8080 1e7 1e7 0 10000 &
+./test_client 8080 1e7 1e7 0 10000 &
+./test_client 8080 1e7 1e7 0 10000 &
+./test_client 8080 1e7 1e7 0 10000 &
+./test_client 8080 1e7 1e7 0 10000 
+
+
+
+wait
 
 
 end_time=$(date +%s)

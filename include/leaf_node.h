@@ -31,6 +31,7 @@ class LeafNode{
         uint64_t number_to_split = 0;
         // locked[0]: split lock; locked[1]: write lock; locked[2]: read lock
         volatile uint32_t locked = 0;
+        InnerSlot* inner_slot = nullptr;
     } leaf_node;
     char unused[NODE_HEADER_SIZE - sizeof(LeafNodeMetadata)];
 
@@ -175,7 +176,7 @@ public:
         return predicted_block + 1;
     }
 
-    LeafNode(InnerSlot& accelerator, uint64_t block_number, _key_t* keys, _payload_t* payloads, uint64_t number, uint64_t start_pos, double slope, double intercept, uint32_t global_version, LeafNode* prev = NULL, LeafNode* next = NULL) {
+    LeafNode(InnerSlot& accelerator, uint64_t block_number, _key_t* keys, _payload_t* payloads, uint64_t number, uint64_t start_pos, double slope, double intercept, uint32_t global_version, LeafNode* prev = NULL, LeafNode* next = NULL, uint64_t i = 0) {
 
         //assert((uint64_t)leaf_slots - (uint64_t)&leaf_node == NODE_HEADER_SIZE);
 
@@ -188,6 +189,7 @@ public:
         leaf_node.number_to_split = block_number * LeafRealSlotsPerBlock * MAX_OVERFLOW_RATIO;
         leaf_node.prev = prev;
         leaf_node.next = next;
+        // leaf_node.inner_slot = accelerator
 
         
 
@@ -215,6 +217,7 @@ public:
         // std::cout << "Init leaf" << std::endl;
         // do_flush(leaf_slots, block_number * BLOCK_SIZE);
         // Build accelerator
+        accelerator.leaf_number = i;
         accelerator.min_key = leaf_node.first_key;
         accelerator.ptr = this;
         accelerator.slope = leaf_node.slope;
@@ -223,6 +226,8 @@ public:
         accelerator.set_type(0);
         accelerator.init_lock();
     }
+
+
 
     ~LeafNode () {
         for (uint64_t i = 0; i < leaf_node.block_number; ++i) {
@@ -245,6 +250,14 @@ public:
     void set_next(LeafNode* next) {
         if (next)
             persist_assign(&leaf_node.next, next);
+    }
+
+    InnerSlot* get_Slot() {
+        return leaf_node.inner_slot;
+    }
+
+    void set_Slot(InnerSlot* accelerator) {
+        leaf_node.inner_slot = accelerator;
     }
 
     LeafNode* get_prev() {
@@ -421,14 +434,14 @@ public:
         uint32_t block, slot;
         if (accelerator) {
             block = predict_block(key, accelerator->slope, accelerator->intercept, accelerator->block_number());
-            if (block >= accelerator->block_number() - 2 && leaf_node.next && get_next()->get_min_key() <= key) {
+            if (block >= accelerator->block_number() - 3 && leaf_node.next && get_next()->get_min_key() <= key) {
                 return get_next()->upsert(key, payload, global_version, leaf_to_split);
             }
             slot = block * LeafSlotsPerBlock;
         }
         else {
             block = predict_block(key, leaf_node.slope, leaf_node.intercept, leaf_node.block_number);
-            if (block >= leaf_node.block_number - 2 && leaf_node.next && get_next()->get_min_key() <= key) {
+            if (block >= leaf_node.block_number - 3 && leaf_node.next && get_next()->get_min_key() <= key) {
                 return get_next()->upsert(key, payload, global_version, leaf_to_split);
             }
             slot = block * LeafSlotsPerBlock;
@@ -473,34 +486,40 @@ public:
         if (!leaf_slots[slot].header.overflow_tree) {
             leaf_slots[slot].header.overflow_tree = new btree::map<_key_t, _payload_t>();
         }
-        auto it  = leaf_slots[slot].header.overflow_tree->find(key);
+        // auto it  = leaf_slots[slot].header.overflow_tree->find(key);
         
 
-        if (it == leaf_slots[slot].header.overflow_tree->end()) {
-            // not Found
-            if (deleted_slot > 0) 
-                flag = 2;
-            else {
-                auto result = leaf_slots[slot].header.overflow_tree->insert({key, payload});
+        // if (it == leaf_slots[slot].header.overflow_tree->end()) {
+        //     // not Found
+        //     if (deleted_slot > 0) 
+        //         flag = 2;
+        //     else {
+        //         auto result = leaf_slots[slot].header.overflow_tree->insert({key, payload});
+        //         if (!result.second) { // Key already exists, update the value
+        //             result.first->second = payload;
+        //             // leaf_slots[slot].header.release_lock();
+        //             flag = 3;  // Updated in overflow tree
+        //         }
+        //         else 
+        //             flag = 4;
+        //     }
+        // }
+        // else {
+            auto result = leaf_slots[slot].header.overflow_tree->insert(std::make_pair(key, payload));
                 if (!result.second) { // Key already exists, update the value
-                    result.first->second = payload;
-                    // leaf_slots[slot].header.release_lock();
-                    flag = 3;  // Updated in overflow tree
-                }
-                else 
-                    flag = 4;
-            }
-        }
-        else {
-            auto result = leaf_slots[slot].header.overflow_tree->insert({key, payload});
-                if (!result.second) { // Key already exists, update the value
-                    result.first->second = payload;
-                    // leaf_slots[slot].header.release_lock();
-                    flag = 3;  // Updated in overflow tree
+                    if (deleted_slot > 0) {
+                        flag = 2;
+                    }
+                    else {
+                        result.first->second = payload;
+                        // leaf_slots[slot].header.release_lock();
+                        flag = 3;  // Updated in overflow tree
+                    }
+                    
                 }
                 else 
                     flag = 4;  // insert in overflow tree
-        }
+        
 
         
 
@@ -514,7 +533,7 @@ public:
     
         
         // btree* overflow_tree = new btree(&leaf_slots[slot].header.overflow_tree, !leaf_slots[slot].header.overflow_tree);
-        // uint32_t flag = overflow_tree->upsert(key, payload, deleted_slot);
+        //  uint32_t flag = overflow_tree->upsert(key, payload, deleted_slot);
         
 
         if (flag == 2) {

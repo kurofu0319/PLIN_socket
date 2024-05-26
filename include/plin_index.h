@@ -132,7 +132,9 @@ class PlinIndex
         plin_metadata *old_plin_ = NULL;
         InnerSlot roots[ROOT_SIZE];
         split_log logs[LOG_NUMBER];
-        LeafNode** leaf_nodes;
+        std::vector<LeafNode*> *leaf_nodes = nullptr;
+        std::vector<InnerSlot*> *last_slots = nullptr;
+        // InnerSlot* last_slots = nullptr;
 
         inline bool get_write_lock()
         {
@@ -193,6 +195,8 @@ public:
             // new btree(&plin_->right_buffer, true);
             plin_->left_buffer = new btree::map<_key_t, _payload_t>();
             plin_->right_buffer = new btree::map<_key_t, _payload_t>();
+            plin_->leaf_nodes = new std::vector<LeafNode*>();
+            plin_->last_slots = new std::vector<InnerSlot*>();
             std::cout << "init Plin" << std::endl;
             // do_flush(plin_, sizeof(plin_metadata));
             mfence();
@@ -464,8 +468,9 @@ public:
         // Build leaf nodes
         uint64_t start_pos = 0;
         auto first_keys = new _key_t[last_n];
-        plin_->leaf_nodes = new LeafNode *[last_n];
+        // plin_->leaf_nodes = new LeafNode *[last_n];
         auto accelerators = new InnerSlot[last_n];
+        // plin_->last_slots = new InnerSlot[last_n];
         LeafNode *prev = NULL;
         uint64_t i;
         for (i = 0; i < last_n; ++i)
@@ -479,9 +484,10 @@ public:
 
             void* allocated_memory = malloc(node_size_in_byte);
             
-            plin_->leaf_nodes[i] = new (allocated_memory) LeafNode(accelerators[i], block_number, keys, payloads, segments[i].number, start_pos, segments[i].slope, segments[i].intercept, plin_->global_version, prev);
+            plin_->leaf_nodes->push_back( new (allocated_memory) LeafNode(accelerators[i], block_number, keys, payloads, segments[i].number, start_pos, segments[i].slope, segments[i].intercept, plin_->global_version, prev, nullptr, i));
             
-            accelerators[i].leaf_number = i;
+            
+            // (*plin_->leaf_nodes)[i]->set_Slot(&accelerators[i]);
             
 
             // printf("%f\n", leaf_nodes[i]->get_min_key());
@@ -495,14 +501,14 @@ public:
 
 
             
-            prev = plin_->leaf_nodes[i];
+            prev = (*plin_->leaf_nodes)[i];
         }
 
         //std::cout << "leaf successful" << std::endl;
 
         for (uint64_t i = 0; i < last_n - 1; ++i)
         {
-            plin_->leaf_nodes[i]->set_next(plin_->leaf_nodes[i + 1]);
+            (*plin_->leaf_nodes)[i]->set_next((*plin_->leaf_nodes)[i + 1]);
         }
 
         plin_->leaf_number = last_n;
@@ -510,6 +516,10 @@ public:
         // std::cout << "leaf number: " << last_n << std::endl;
 
         // delete[] leaf_nodes;
+
+        // for (size_t i = 0; i < last_n; ++ i) {
+        //     plin_->last_slots->push_back(&accelerators[i]);
+        // }
 
         // Build inner nodes recursively
         uint32_t level = 0;
@@ -536,13 +546,16 @@ public:
                 first_keys[i] = segments[offset + i].first_key;
 
                 void* allocated_memory = malloc(node_size_in_byte);
-
-                new (allocated_memory) InnerNode(accelerators[i], block_number, first_keys_tmp, accelerators_tmp, segments[offset + i].number, start_pos, segments[offset + i].slope, segments[offset + i].intercept, level);
+                if (level == 1)
+                    new (allocated_memory) InnerNode(accelerators[i], block_number, first_keys_tmp, accelerators_tmp, segments[offset + i].number, start_pos, segments[offset + i].slope, segments[offset + i].intercept, level, plin_->last_slots);
+                else
+                    new (allocated_memory) InnerNode(accelerators[i], block_number, first_keys_tmp, accelerators_tmp, segments[offset + i].number, start_pos, segments[offset + i].slope, segments[offset + i].intercept, level);
                 start_pos += segments[offset + i].number;
 
             
             }
-            delete[] accelerators_tmp;
+            std::cout << "slot size: " << plin_->last_slots->size() << std::endl;
+            // delete[] accelerators_tmp;
             delete[] first_keys_tmp;
             accelerators_tmp = accelerators;
             first_keys_tmp = first_keys;
@@ -641,7 +654,7 @@ public:
 
     void find_Path(_key_t key, std::vector<int>& leaf_path)
     {
-        if (key > plin_->min_key && key < plin_->max_key) {
+        if (key >= plin_->min_key && key <= plin_->max_key) {
 
             // std::cout << "find path" << std::endl;
 
@@ -668,24 +681,34 @@ public:
                 (reinterpret_cast<InnerNode *>(accelerator->ptr))->get_Leaf_path(key, accelerator, leaf_path);
                 
             }
-            else {
-                leaf_path.push_back(accelerator->leaf_number);
-            }
+            // else {
+            //     leaf_path.push_back(accelerator->leaf_number);
+            //     // std::cout << "leaf number: " << accelerator->leaf_number << std::endl;
+            // }
         }   
     }
 
-    _payload_t find_Payload(std::vector<int>& leaf_path,_key_t key, size_t cur_ptr, uint32_t level) {
+    _payload_t find_Payload(_key_t key, uint32_t leaf_number) {
+        // std::cout << "find_Payload" << std::endl;
         _payload_t ans;
-        InnerSlot *accelerator = &plin_->roots[leaf_path[cur_ptr]];
+        // InnerSlot *accelerator = &plin_->roots[leaf_path[cur_ptr]];
 
-        for (int i = 1; i <= level; ++ i)
-            accelerator = (reinterpret_cast<InnerNode *>(accelerator->ptr))->get_Slot(leaf_path[cur_ptr + i]);
+        // for (int i = 1; i <= level; ++ i)
+        //     accelerator = (reinterpret_cast<InnerNode *>(accelerator->ptr))->get_Slot(leaf_path[cur_ptr + i]);
+
+        LeafNode* leaf_node = plin_->leaf_nodes->at(leaf_number);
+        
+
+        // std::cout << "locked? : " << accelerator->check_read_lock() << std::endl;
 
         do {
+            InnerSlot* accelerator = plin_->last_slots->at(leaf_number);
             if (accelerator->check_read_lock())
             {
-                //std::cout << "find" << std::endl;
+                // std::cout << "find" << std::endl;
                 uint32_t ret = (reinterpret_cast<LeafNode *>(accelerator->ptr))->find(key, ans, plin_->global_version, accelerator);
+                // std::cout << "ret" << ret << std::endl;
+                // uint32_t ret = leaf_node->find(key, ans, plin_->global_version, accelerator);
                 if (ret == 1)
                 {
                     // std::cout << "ret: 1, Found!" << std::endl;
@@ -757,25 +780,27 @@ public:
         
     // }
 
-    void upsert_Path(_key_t key, _payload_t payload, std::vector<int>& leaf_path, 
-                        uint32_t cur_ptr, uint32_t level) {
+    void upsert_Path(_key_t key, _payload_t payload, uint32_t leaf_number) {
 
         
 
-        if (key > plin_->min_key && key < plin_->max_key) {
+        if (key >= plin_->min_key && key <= plin_->max_key) {
             uint32_t ret;
             do {
 
             _payload_t ans;
-            InnerSlot *accelerator = &plin_->roots[leaf_path[cur_ptr]];
+            // InnerSlot *accelerator = &plin_->roots[leaf_path[cur_ptr]];
 
-            for (int i = 1; i <= level; i ++ )
-                accelerator = (reinterpret_cast<InnerNode *>(accelerator->ptr))->get_Slot(leaf_path[cur_ptr + i]);
+            // for (int i = 1; i <= level; i ++ )
+            //     accelerator = (reinterpret_cast<InnerNode *>(accelerator->ptr))->get_Slot(leaf_path[cur_ptr + i]);
+                LeafNode* inner_node = (*plin_->leaf_nodes)[leaf_number];
+                InnerSlot* accelerator = plin_->last_slots->at(leaf_number);
 
                 LeafNode *leaf_to_split;
                 // ret = 1 : update in a slot; ret = 2 : insert in a free slot; ret = 3 : update in overflow block; ret = 4 : insert in overflow block;
                 // ret = 5 : insert in overflow block & need to split; ret = 6 : insert in overflow block & need to split orphan node; ret = 7 : the node is locked
                 ret = reinterpret_cast<LeafNode *>(accelerator->ptr)->upsert(key, payload, plin_->global_version, leaf_to_split, accelerator);
+                // ret = inner_node->upsert(key, payload, plin_->global_version, leaf_to_split, NULL);
                 // Split leaf node
                 if (ret == 5)
                 {
@@ -783,13 +808,13 @@ public:
                         std::thread split_thread(&SelfType::split, this, leaf_to_split, accelerator);
                         split_thread.detach();
                     #else
-                        split(leaf_to_split, accelerator);
+                        split(leaf_to_split, NULL);
                     #endif
                 }
                 else if (ret == 6)
                 {
 #ifdef BACKGROUND_SPLIT
-                    std::thread split_thread(&SelfType::split, this, leaf_to_split, nullptr);
+                    std::thread split_thread(&SelfType::split, this, leaf_to_split, accelerator);
                     split_thread.detach();
 #else
                     split(leaf_to_split, NULL);
@@ -824,7 +849,7 @@ public:
 
     void upsert(_key_t key, _payload_t payload)
     {
-        if (key > plin_->min_key && key < plin_->max_key)
+        if (key >= plin_->min_key && key <= plin_->max_key)
         {
             uint32_t ret;
             do
@@ -843,11 +868,11 @@ public:
                 LeafNode *leaf_to_split;
                 // ret = 1 : update in a slot; ret = 2 : insert in a free slot; ret = 3 : update in overflow block; ret = 4 : insert in overflow block;
                 // ret = 5 : insert in overflow block & need to split; ret = 6 : insert in overflow block & need to split orphan node; ret = 7 : the node is locked
-                ret = reinterpret_cast<LeafNode *>(accelerator->ptr)->upsert(key, payload, plin_->global_version, leaf_to_split, accelerator);
+                ret = (reinterpret_cast<LeafNode *>(accelerator->ptr))->upsert(key, payload, plin_->global_version, leaf_to_split, accelerator);
                 // Split leaf node
                 if (ret == 5)
                 {
-                    // std::cout << "split" << std::endl;
+                    std::cout << "split" << std::endl;
                     #ifdef BACKGROUND_SPLIT
                         std::thread split_thread(&SelfType::split, this, leaf_to_split, accelerator);
                         split_thread.detach();
@@ -859,7 +884,7 @@ public:
                 {
 #ifdef BACKGROUND_SPLIT
                     std::cout << "background split" << std::endl;
-                    std::thread split_thread(&SelfType::split, this, leaf_to_split, nullptr);
+                    std::thread split_thread(&SelfType::split, this, leaf_to_split, accelerator);
                     split_thread.detach();
 #else
                     split(leaf_to_split, NULL);
@@ -1219,7 +1244,7 @@ public:
 
                 void* allocated_memory = malloc(node_size_in_byte);
 
-                new (allocated_memory) InnerNode(accelerators[i], block_number, first_keys_tmp, accelerators_tmp, segments[offset + i].number, start_pos, segments[offset + i].slope, segments[offset + i].intercept, level, true);
+                new (allocated_memory) InnerNode(accelerators[i], block_number, first_keys_tmp, accelerators_tmp, segments[offset + i].number, start_pos, segments[offset + i].slope, segments[offset + i].intercept, level, nullptr, true);
                 start_pos += segments[offset + i].number;
             }
             delete[] accelerators_tmp;

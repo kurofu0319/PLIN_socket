@@ -200,8 +200,6 @@ void send_insert_Confirmation(int client_socket, size_t batch_size) {
 void handle_client(TestIndex& testIndex, int client_socket, std::vector<char>& buffer) {
 
     std::cout << "thread: " << client_socket << std::endl;
-    
-    uint32_t level = testIndex.get_level();
 
     while (true) {
         Client_message receivedMsg = receiveAndDeserialize(client_socket);
@@ -220,8 +218,12 @@ void handle_client(TestIndex& testIndex, int client_socket, std::vector<char>& b
             for (size_t i = 0; i < receivedMsg.batch_size; ++i) {
                 _payload_t payload;
                 // std::cout << "leaf path size: " << receivedMsg.leaf_paths.size() << std::endl;
+
+                // std::cout << "leaf number: " << receivedMsg.leaf_paths[i] << std::endl;
                 
-                payload = testIndex.find_Payload(receivedMsg.leaf_paths, receivedMsg.keys[i], i * (level + 1), level);
+                payload = testIndex.find_Payload(receivedMsg.keys[i], receivedMsg.leaf_paths[i]);
+
+                // std::cout << "payload: " << payload << std::endl;
                 
 
                 // testIndex.find(receivedMsg.keys[i], payload);
@@ -243,10 +245,9 @@ void handle_client(TestIndex& testIndex, int client_socket, std::vector<char>& b
         }
         else if (receivedMsg.type == Client_message::INSERT) {
             // std::cout << "INSERT" << std::endl;
-            uint32_t level = receivedMsg.level;
             for (size_t i = 0; i < receivedMsg.batch_size; ++i) {
                 
-                testIndex.upsert_Path(receivedMsg.keys[i], receivedMsg.payloads[i], receivedMsg.leaf_paths, i * (level + 1), level);
+                testIndex.upsert_Path(receivedMsg.keys[i], receivedMsg.payloads[i], receivedMsg.leaf_paths[i]);
             }
             // Optionally, confirm back to the client that the insert was successful
             send_insert_Confirmation(client_socket, receivedMsg.batch_size);
@@ -392,7 +393,7 @@ int main(int argc, char* argv[]) {
 
     // run_upsert_test(test_index, keys, payloads, number);
 
-    // run_search_test(test_index, keys, payloads, number);
+    run_search_test(test_index, keys, payloads, number);
 
     std::vector<char> buffer;
     test_index.serializePlinIndex(buffer);

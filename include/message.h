@@ -16,7 +16,6 @@ public:
     std::vector<_payload_t> payloads;
     std::vector<int> leaf_paths;
     size_t batch_size;
-    uint32_t level;
 
     static const Client_message InvalidMessage;
 
@@ -33,30 +32,30 @@ public:
     // Client_message(size_t batch_size) : batch_size(batch_size), keys(batch_size), 
     //                 payloads(batch_size), leaf_paths(batch_size) {}
 
-    Client_message(Type t = META , size_t batch_size = 1, uint32_t level = 1) 
-        : type(t), batch_size(batch_size), level(level), keys(batch_size), payloads(batch_size), leaf_paths(batch_size * (level + 1)) {}
+    Client_message(Type t = META , size_t batch_size = 1) 
+        : type(t), batch_size(batch_size), keys(batch_size), payloads(batch_size), leaf_paths(batch_size) {}
 
     Client_message(const std::vector<_key_t>& keys, size_t batch_size)
         : Client_message(RAW_KEY, batch_size) {
         this->keys = keys;
     }
 
-    Client_message(const std::vector<int>& paths, const std::vector<_key_t>& keys, size_t batch_size, uint32_t level)
-        : Client_message(LOOKUP, batch_size, level) {
+    Client_message(const std::vector<int>& paths, const std::vector<_key_t>& keys, size_t batch_size)
+        : Client_message(LOOKUP, batch_size) {
         this->keys = keys;
         this->leaf_paths = paths;
     }
 
     Client_message(const std::vector<_key_t>& keys, const std::vector<_payload_t>& payloads, 
-                   const std::vector<int>& paths, size_t batch_size, uint32_t level = 1)
-        : Client_message(INSERT, batch_size, level) {
+                   const std::vector<int>& paths, size_t batch_size)
+        : Client_message(INSERT, batch_size) {
         this->keys = keys;
         this->payloads = payloads;
         this->leaf_paths = paths;
     }
 
     Client_message(const std::vector<_key_t>& keys, const std::vector<_payload_t>& payloads, size_t batch_size)
-        : Client_message(RAW_INSERT, batch_size, level) {
+        : Client_message(RAW_INSERT, batch_size) {
         this->keys = keys;
         this->payloads = payloads;
     }
@@ -73,11 +72,10 @@ public:
         std::ostringstream content;
         content.write(reinterpret_cast<const char*>(&type), sizeof(Type));
         content.write(reinterpret_cast<const char*>(&batch_size), sizeof(size_t));
-        content.write(reinterpret_cast<const char*>(&level), sizeof(uint32_t));
 
         content.write(reinterpret_cast<const char*>(keys.data()), sizeof(_key_t) * batch_size);
         content.write(reinterpret_cast<const char*>(payloads.data()), sizeof(_payload_t) * batch_size);
-        content.write(reinterpret_cast<const char*>(leaf_paths.data()), sizeof(int) * batch_size * (level + 1));
+        content.write(reinterpret_cast<const char*>(leaf_paths.data()), sizeof(int) * batch_size );
 
         // std::cout << "serialize leaf path: " << std::endl;
 
@@ -102,22 +100,20 @@ public:
         std::istringstream ss(serializedData);
         Type t;
         size_t batch_size;
-        uint32_t level;
 
         ss.read(reinterpret_cast<char*>(&t), sizeof(Type));
         ss.read(reinterpret_cast<char*>(&batch_size), sizeof(size_t));
-        ss.read(reinterpret_cast<char*>(&level), sizeof(uint32_t));
 
         // std::cout << "batch size: " << batch_size << std::endl;
         // std::cout << "level: " << level << std::endl;
 
         std::vector<_key_t> keys(batch_size);
         std::vector<_payload_t> payloads(batch_size);
-        std::vector<int> leaf_paths(batch_size * (level + 1));
+        std::vector<int> leaf_paths(batch_size);
 
         ss.read(reinterpret_cast<char*>(keys.data()), sizeof(_key_t) * batch_size);
         ss.read(reinterpret_cast<char*>(payloads.data()), sizeof(_payload_t) * batch_size);
-        ss.read(reinterpret_cast<char*>(leaf_paths.data()), sizeof(int) * batch_size * (level + 1));
+        ss.read(reinterpret_cast<char*>(leaf_paths.data()), sizeof(int) * batch_size);
 
         
         // std::cout << "deserialize leaf path: " << std::endl;
@@ -127,7 +123,7 @@ public:
         // }
         // std::cout << std::endl;
 
-        Client_message msg(t, batch_size, level);
+        Client_message msg(t, batch_size);
         msg.keys = std::move(keys);
         msg.payloads = std::move(payloads);
         msg.leaf_paths = std::move(leaf_paths);

@@ -156,7 +156,6 @@ void lookup_Preparation(TaskScheduler& scheduler, PlinIndex& test_index, _key_t*
                            size_t number, size_t test_size, size_t batch_size, bool cache) {
     std::mt19937 gen(123);
     std::uniform_int_distribution<size_t> dist(0, number - 1);
-    uint32_t level = test_index.get_level();
 
     std::vector<_key_t> batch_keys;
     std::vector<_payload_t> batch_payloads;
@@ -167,14 +166,16 @@ void lookup_Preparation(TaskScheduler& scheduler, PlinIndex& test_index, _key_t*
         size_t real_batch_size = std::min(batch_size, test_size - i);
         batch_keys.clear();
         batch_payloads.clear();
+        leaf_paths.clear();
         
         if (cache == true) {
-            leaf_paths.clear();
+            
             for (size_t j = 0; j < real_batch_size; ++j) {
                 size_t target_pos = dist(gen);
                 batch_keys.push_back(keys[target_pos]);
                 batch_payloads.push_back(payloads[target_pos]);
                 test_index.find_Path(batch_keys[j], leaf_paths); 
+                // std::cout << "leaf number: " << leaf_paths[j] << std::endl;
             }
         }
         else {
@@ -186,7 +187,7 @@ void lookup_Preparation(TaskScheduler& scheduler, PlinIndex& test_index, _key_t*
         }
         
         if (cache == true) {
-            Client_message msg(leaf_paths, batch_keys, real_batch_size, level);
+            Client_message msg(leaf_paths, batch_keys, real_batch_size);
             message = msg.serialize();
         }
             
@@ -221,7 +222,7 @@ void lookup_sendMessage(int sock, TaskScheduler& scheduler, size_t test_size, si
         
         for (size_t j = 0; j < real_batch_size; ++j) {
             if (recv_payloads[j] != batch_payloads[j]) {
-                std::cout << "Wrong payload!" << std::endl;
+                // std::cout << "Wrong payload!" << std::endl;
                 false_count++;
             }
         }
@@ -229,6 +230,7 @@ void lookup_sendMessage(int sock, TaskScheduler& scheduler, size_t test_size, si
     }
 
     std::cout << "receive time: " << receive_duration.count() << " milliseconds" << std::endl;
+    std::cout << "false count: " << false_count << std::endl;
 }
 
 void run_search_test_client(int sock, TestIndex& test_index, _key_t* keys, _payload_t* payloads, 
@@ -262,49 +264,57 @@ int receiveInsertConfirmation(int server_socket) {
         return 0;
     }
 }            // leaf_path.push_back(i);
-void run_upsert_test_client(int server_sock, TestIndex& test_index, size_t upsert_times, size_t batch_size, bool cache) {
+void run_upsert_test_client(int server_sock, TestIndex& test_index, _key_t* upsert_keys, size_t upsert_times, size_t batch_size, bool cache) {
     TaskScheduler scheduler;
-    std::mt19937 key_gen(456); 
-    std::mt19937 payload_gen(456);
-    std::normal_distribution<_key_t> key_dist(0, 1e9);
-    std::uniform_int_distribution<_payload_t> payload_dist(0, 1e9);
 
-    uint32_t level = test_index.get_level();
+    // _key_t   *new_keys = new _key_t[upsert_times];
+    // _payload_t    *new_payloads = new _payload_t[upsert_times];
 
-    _key_t* keys = new _key_t[upsert_times];
-    _payload_t* payloads = new _payload_t[upsert_times];
-
-    for (int i = 0; i < upsert_times; ++ i) {
-        keys[i] = key_dist(key_gen);
-        payloads[i] = payload_dist(payload_gen);
-    }
+    // for (int i = 0; i < upsert_times; ++ i) {
+    //     // new_keys[i] = key_dist(gen);
+    //     new_keys[i] = upsert_keys[dist(gen)];
+    //     new_payloads[i] = payload_dist(payload_gen);
+    // }
 
     auto start = std::chrono::high_resolution_clock::now();
 
     std::cout << "start" << std::endl;
 
     // 数据准备线程
-    std::thread prepThread([&scheduler, &test_index, upsert_times, batch_size, keys, payloads, level, cache]() {
+    std::thread prepThread([&scheduler, &test_index, upsert_times, upsert_keys, batch_size, cache]() {
+        std::normal_distribution<_key_t> key_dist(0, 1e9);
+        std::mt19937 gen(123); 
+        std::uniform_int_distribution<size_t> dist(0, upsert_times - 1);
+        std::mt19937 payload_gen(123);
+        std::uniform_int_distribution<_payload_t> payload_dist(0, 1e9);
+
         std::vector<int> leaf_path;
         std::vector<_key_t> batch_keys;
         std::vector<_payload_t> batch_payloads;
-        
 
         for (size_t i = 0; i < upsert_times; i += batch_size) {
             leaf_path.clear(); batch_keys.clear(); batch_payloads.clear();
             size_t real_batch_size = std::min(batch_size, upsert_times - i);
+            _key_t target_key;
+            _payload_t target_payload;
             
             if (cache == true) {
                 for (size_t j = 0; j < real_batch_size ; ++j) {
-                    batch_keys.push_back(keys[i + j]);
-                    batch_payloads.push_back(payloads[i + j]);
-                    test_index.find_Path(keys[i + j], leaf_path);
+                    target_key = upsert_keys[dist(gen)];
+                    target_payload = payload_dist(payload_gen);
+
+                    batch_keys.push_back(target_key);
+                    batch_payloads.push_back(target_payload);
+                    test_index.find_Path(target_key, leaf_path);
                 }
             }
             else {
                 for (size_t j = 0; j < real_batch_size ; ++j) {
-                    batch_keys.push_back(keys[i + j]);
-                    batch_payloads.push_back(payloads[i + j]);
+                    target_key = upsert_keys[dist(gen)];
+                    target_payload = payload_dist(payload_gen);
+
+                    batch_keys.push_back(target_key);
+                    batch_payloads.push_back(target_payload);
                 }
             }
             
@@ -313,7 +323,7 @@ void run_upsert_test_client(int server_sock, TestIndex& test_index, size_t upser
             std::string message;
 
             if (cache == true) {
-                Client_message msg(batch_keys, batch_payloads, leaf_path, batch_size, level);
+                Client_message msg(batch_keys, batch_payloads, leaf_path, batch_size);
                 message = msg.serialize();
             }
             else {
@@ -356,7 +366,7 @@ void run_upsert_test_client(int server_sock, TestIndex& test_index, size_t upser
 
     std::cout << "Justify: " << std::endl;
 
-    // run_search_test_client(server_sock, test_index, keys, payloads,  upsert_times, upsert_times, batch_size, false);
+    // run_search_test_client(server_sock, test_index, new_keys, new_payloads, upsert_times, upsert_times, batch_size, false);
 }
 
 
@@ -485,13 +495,13 @@ int main(int argc, char* argv[]) {
     }
     else if (mode == 2) {
         std::cout << "run upsert with cache" << std::endl;
-        run_upsert_test_client(server_sock, testindex, test_size, batch_size, true);
+        run_upsert_test_client(server_sock, testindex, keys, test_size, batch_size, true);
         
     }
 
     else if (mode == 3) {
         std::cout << "run upsert without cache" << std::endl;
-        run_upsert_test_client(server_sock, testindex, test_size, batch_size, false);
+        run_upsert_test_client(server_sock, testindex, keys, test_size, batch_size, false);
         
     }
 
