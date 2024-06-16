@@ -1,0 +1,4 @@
+/home/user/zr/PLIN/CMakeFiles/test_server.dir
+/home/user/zr/PLIN/CMakeFiles/test_client.dir
+/home/user/zr/PLIN/CMakeFiles/edit_cache.dir
+/home/user/zr/PLIN/CMakeFiles/rebuild_cache.dir

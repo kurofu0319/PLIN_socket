@@ -1,0 +1,1 @@
+/usr/bin/c++  -Iinclude -mclflushopt -mclwb -march=native -O3 -g   CMakeFiles/Plin.dir/test.cpp.o  -o Plin  -lpmemobj -pthread 
