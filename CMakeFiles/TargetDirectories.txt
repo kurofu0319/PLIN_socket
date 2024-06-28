@@ -1,4 +1,4 @@
-/home/furui/Desktop/PLIN/CMakeFiles/test_server.dir
-/home/furui/Desktop/PLIN/CMakeFiles/test_client.dir
-/home/furui/Desktop/PLIN/CMakeFiles/edit_cache.dir
-/home/furui/Desktop/PLIN/CMakeFiles/rebuild_cache.dir
+/home/furui/Desktop/PLIN_socket/CMakeFiles/test_server.dir
+/home/furui/Desktop/PLIN_socket/CMakeFiles/test_client.dir
+/home/furui/Desktop/PLIN_socket/CMakeFiles/edit_cache.dir
+/home/furui/Desktop/PLIN_socket/CMakeFiles/rebuild_cache.dir

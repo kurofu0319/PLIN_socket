@@ -11,6 +11,7 @@
 #include <cstdlib>
 
 #include "include/plin_index.h"
+#include "include/Safe_queue.h"
 #include "include/message.h"
 #include "include/btree/map.h"
 #include "include/alex/alex.h"
@@ -81,6 +82,34 @@ void SetCustomUsageMessage() {
         "\n"
     );
 }
+
+void send_insert_Confirmation(int client_socket, size_t batch_size) {
+    std::string confirmation = "Confirmation: " + std::to_string(batch_size) + " items inserted successfully.";
+    send(client_socket, confirmation.c_str(), confirmation.size(), 0);
+}
+
+void insert_handler(SafeQueue<std::pair<Client_message, int>>& task_queue, BTreeMap& btree, BPlustree& bptree, AlexIndex& alex_index) {
+    while (true) {
+        std::pair<Client_message, int> task = task_queue.dequeue();
+        Client_message message = task.first;
+        int client_socket = task.second;
+        if (message.type == Client_message::ALEX_upsert) {
+            for (size_t i = 0; i < message.batch_size; ++i) {
+                alex_index.insert(message.keys[i], message.payloads[i]);
+            }
+        }
+        else if (message.type == Client_message::BTree_upsert) {
+            for (size_t i = 0; i < message.batch_size; ++i) 
+                btree.insert(std::make_pair(message.keys[i], message.payloads[i]));
+        }
+        else if (message.type == Client_message::BPtree_upsert) {
+            for (size_t i = 0; i < message.batch_size; ++i) 
+                bptree.insert(std::make_pair(message.keys[i], message.payloads[i]));
+        }
+        send_insert_Confirmation(client_socket, message.batch_size);
+    }
+}
+
 
 void run_search_test(TestIndex& test_index, _key_t* keys, _payload_t* payloads, size_t number){
     std::mt19937 search_gen(123);
@@ -342,13 +371,9 @@ int sendResults(int sock, const std::vector<std::vector<std::pair<_key_t, _paylo
 }
 
 
-void send_insert_Confirmation(int client_socket, size_t batch_size) {
-    std::string confirmation = "Confirmation: " + std::to_string(batch_size) + " items inserted successfully.";
-    send(client_socket, confirmation.c_str(), confirmation.size(), 0);
-}
 
 
-void handle_client(TestIndex& testIndex, int client_socket, std::vector<char>& buffer, BTreeMap &btree, BPlustree &bptree, AlexIndex &alex_index) {
+void handle_client(TestIndex& testIndex, int client_socket, std::vector<char>& buffer, BTreeMap &btree, BPlustree &bptree, AlexIndex &alex_index, SafeQueue<std::pair<Client_message, int>>& task_queue) {
 
     std::cout << "thread: " << client_socket << std::endl;
 
@@ -445,10 +470,11 @@ void handle_client(TestIndex& testIndex, int client_socket, std::vector<char>& b
             sendPayloads(client_socket, payloads);
         }
         else if (receivedMsg.type == Client_message::BTree_upsert) {
-            for (size_t i = 0; i < receivedMsg.batch_size; ++i) {
-                btree.insert(std::make_pair(receivedMsg.keys[i], receivedMsg.payloads[i]));
-            }
-            send_insert_Confirmation(client_socket, receivedMsg.batch_size);
+            task_queue.enqueue(std::make_pair(receivedMsg, client_socket));
+            // for (size_t i = 0; i < receivedMsg.batch_size; ++i) {
+            //     btree.insert(std::make_pair(receivedMsg.keys[i], receivedMsg.payloads[i]));
+            // }
+            // send_insert_Confirmation(client_socket, receivedMsg.batch_size);
         }
         else if (receivedMsg.type == Client_message::BTree_RANGE) {
             
@@ -475,10 +501,11 @@ void handle_client(TestIndex& testIndex, int client_socket, std::vector<char>& b
             sendPayloads(client_socket, payloads);
         }
         else if (receivedMsg.type == Client_message::BPtree_upsert) {
-            for (size_t i = 0; i < receivedMsg.batch_size; ++i) {
-                bptree.insert(receivedMsg.keys[i], receivedMsg.payloads[i]);
-            }
-            send_insert_Confirmation(client_socket, receivedMsg.batch_size);
+             task_queue.enqueue(std::make_pair(receivedMsg, client_socket));
+            // for (size_t i = 0; i < receivedMsg.batch_size; ++i) {
+            //     bptree.insert(receivedMsg.keys[i], receivedMsg.payloads[i]);
+            // }
+            // send_insert_Confirmation(client_socket, receivedMsg.batch_size);
         }
         else if (receivedMsg.type == Client_message::BPtree_RANGE) {
             
@@ -503,10 +530,11 @@ void handle_client(TestIndex& testIndex, int client_socket, std::vector<char>& b
             sendPayloads(client_socket, payloads);
         }
         else if (receivedMsg.type == Client_message::ALEX_upsert) {
-            for (size_t i = 0; i < receivedMsg.batch_size; ++i) {
-                alex_index.insert(receivedMsg.keys[i], receivedMsg.payloads[i]);
-            }
-            send_insert_Confirmation(client_socket, receivedMsg.batch_size);
+             task_queue.enqueue(std::make_pair(receivedMsg, client_socket));
+            // for (size_t i = 0; i < receivedMsg.batch_size; ++i) {
+            //     alex_index.insert(receivedMsg.keys[i], receivedMsg.payloads[i]);
+            // }
+            // send_insert_Confirmation(client_socket, receivedMsg.batch_size);
         }
         else if (receivedMsg.type == Client_message::ALEX_RANGE) {
             
@@ -529,7 +557,7 @@ void handle_client(TestIndex& testIndex, int client_socket, std::vector<char>& b
     close(client_socket);
 }
 
-void start_server(int port, std::vector<char>& buffer, TestIndex& testIndex, BTreeMap &btree, BPlustree &bptree, AlexIndex &alex_index) {
+void start_server(int port, std::vector<char>& buffer, TestIndex& testIndex, BTreeMap &btree, BPlustree &bptree, AlexIndex &alex_index, SafeQueue<std::pair<Client_message, int>> &task_queue) {
     int server_fd, client_socket;
     struct sockaddr_in address;
     int opt = 1;
@@ -568,8 +596,10 @@ void start_server(int port, std::vector<char>& buffer, TestIndex& testIndex, BTr
             continue;
         }
 
+        
+
         std::thread(handle_client, std::ref(testIndex), client_socket, std::ref(buffer), std::ref(btree), std::ref(bptree), 
-                                                                                                    std::ref(alex_index)).detach();
+                                                                                                    std::ref(alex_index), std::ref(task_queue)).detach();
         
     }
     close(server_fd);
@@ -668,7 +698,13 @@ int main(int argc, char* argv[]) {
     test_index.serializePlinIndex(buffer);
     prependSizeToBuffer(buffer);
 
-    start_server(port, buffer, test_index, btree, bptree, alex_index);
+    SafeQueue<std::pair<Client_message, int>> task_queue;
+    std::thread insert_thread(insert_handler, std::ref(task_queue), std::ref(btree), std::ref(bptree), std::ref(alex_index));
+
+
+    start_server(port, buffer, test_index, btree, bptree, alex_index, task_queue);
+
+    insert_thread.join();
     return 0;
 }
 
