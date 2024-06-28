@@ -407,11 +407,14 @@ public:
                 }
             }
             if (leaf_slots[slot].header.overflow_tree) {
-                for (auto it = leaf_slots[slot].header.overflow_tree->lower_bound(lower_bound);
-                 it != leaf_slots[slot].header.overflow_tree->end() && it->first <= upper_bound;
-                 ++it) {
-                answers.emplace_back(it->first, it->second);
-            }
+                auto it_low = leaf_slots[slot].header.overflow_tree->lower_bound(lower_bound);
+                auto it_high = leaf_slots[slot].header.overflow_tree->upper_bound(upper_bound);
+
+                while (it_low != it_high) {
+                    answers.emplace_back(it_low->first, it_low->second);
+                    ++it_low;
+                }
+            
                 // btree* overflow_tree = new btree(&leaf_slots[slot].header.overflow_tree, false);
                 // overflow_tree->range_query(lower_bound, upper_bound, answers);
             }
