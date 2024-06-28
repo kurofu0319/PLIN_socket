@@ -18,7 +18,7 @@
 // #define DEBUG
 
 // #define BACKGROUND_REBUILD
-#define BACKGROUND_SPLIT
+// #define BACKGROUND_SPLIT
 // #define BACKGROUND_CHECKLOGS
 
 // How to flush
@@ -38,11 +38,11 @@ constexpr static uint64_t BLOCK_SIZE = 256;
 constexpr static uint64_t NODE_HEADER_SIZE = 256;
 
 // Root size
-constexpr static uint64_t ROOT_SIZE = 8;
+constexpr static uint64_t ROOT_SIZE = 4;
 constexpr static uint64_t LOG_NUMBER = 16;
 
 // Epsilon for training models
-constexpr static uint64_t EPSILON_LEAF_NODE = 256;
+constexpr static uint64_t EPSILON_LEAF_NODE = 16;
 constexpr static uint64_t EPSILON_INNER_NODE = 8;
 
 // Initial filling ratio

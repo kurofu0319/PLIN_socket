@@ -57,6 +57,13 @@
         "iomanip": "cpp",
         "condition_variable": "cpp",
         "mutex": "cpp",
-        "future": "cpp"
+        "future": "cpp",
+        "bitset": "cpp",
+        "list": "cpp",
+        "hash_map": "cpp",
+        "hash_set": "cpp",
+        "complex": "cpp",
+        "cfenv": "cpp",
+        "variant": "cpp"
     }
 }

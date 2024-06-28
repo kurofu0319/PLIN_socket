@@ -1,1 +1,1 @@
-/usr/bin/c++ -Iinclude -mclflushopt -mclwb -fopenmp -march=native -O3 -g CMakeFiles/test_server.dir/test_server.cpp.o -o test_server  -pthread 
+/usr/bin/c++ -Iinclude -mclflushopt -mclwb -fopenmp -march=native -O3 -g CMakeFiles/test_server.dir/test_server.cpp.o -o test_server  -pthread /usr/lib/x86_64-linux-gnu/libgflags.so.2.2.2 -lpthread

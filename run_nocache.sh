@@ -2,17 +2,27 @@ start_time=$(date +%s)
 
 echo "Running script..."
 
+./test_client 8080 1e8 1e8 1 100 &
+./test_client 8080 1e8 1e8 1 100 &
+./test_client 8080 1e8 1e8 1 100 &
+./test_client 8080 1e8 1e8 1 100 &
+./test_client 8080 1e8 1e8 1 100 &
+./test_client 8080 1e8 1e8 3 100 &
+./test_client 8080 1e8 1e8 3 100 &
+./test_client 8080 1e8 1e8 3 100 &
+./test_client 8080 1e8 1e8 3 100 &
+./test_client 8080 1e8 1e8 3 100 &
+./test_client 8080 1e8 1e8 1 100 &
+./test_client 8080 1e8 1e8 1 100 &
+./test_client 8080 1e8 1e8 1 100 &
+./test_client 8080 1e8 1e8 1 100 &
+./test_client 8080 1e8 1e8 1 100 &
+./test_client 8080 1e8 1e8 3 100 &
+./test_client 8080 1e8 1e8 3 100 &
+./test_client 8080 1e8 1e8 3 100 &
+./test_client 8080 1e8 1e8 3 100 &
+./test_client 8080 1e8 1e8 3 100 
 
-./test_client 8080 1e7 1e7 3 10000 &
-./test_client 8080 1e7 1e7 3 10000 &
-./test_client 8080 1e7 1e7 3 10000 &
-./test_client 8080 1e7 1e7 3 10000 &
-./test_client 8080 1e7 1e7 3 10000 &
-./test_client 8080 1e7 1e7 1 10000 &
-./test_client 8080 1e7 1e7 1 10000 &
-./test_client 8080 1e7 1e7 1 10000 &
-./test_client 8080 1e7 1e7 1 10000 &
-./test_client 8080 1e7 1e7 1 10000 
 
 
 wait

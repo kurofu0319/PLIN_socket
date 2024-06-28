@@ -42,7 +42,7 @@ public:
         return predicted_block + 1;
     }
 
-    InnerNode(InnerSlot& accelerator, uint64_t block_number, _key_t* keys, InnerSlot* nodes, uint64_t number, uint64_t start_pos, double slope, double intercept, uint32_t level, std::vector<InnerSlot*> *last_slots = nullptr , bool rebuild = false) {
+    InnerNode(InnerSlot& accelerator, LeafNode** leaf_nodes, uint64_t block_number, _key_t* keys, InnerSlot* nodes, uint64_t number, uint64_t start_pos, double slope, double intercept, uint32_t level, std::vector<InnerSlot*> *last_slots = nullptr , bool rebuild = false) {
         // assert((uint64_t)inner_slots - (uint64_t)&inner_node == NODE_HEADER_SIZE);
         inner_node.block_number = block_number;
         inner_node.slope = slope / INNER_NODE_INIT_RATIO;
@@ -60,7 +60,19 @@ public:
         }
         // Model-based data placement
         for (uint64_t i = 0; i < number; ++i) {
-            last_slots->push_back(data_placement(keys[start_pos + i], nodes[start_pos + i]));
+            if (last_slots)
+                if (leaf_nodes)
+                    last_slots->push_back(data_placement(keys[start_pos + i], nodes[start_pos + i], leaf_nodes[start_pos + i]));
+                else
+                    last_slots->push_back(data_placement(keys[start_pos + i], nodes[start_pos + i], nullptr));
+            else 
+                if (leaf_nodes)
+                    data_placement(keys[start_pos + i], nodes[start_pos + i], leaf_nodes[start_pos + i]);
+                else
+                    data_placement(keys[start_pos + i], nodes[start_pos + i], nullptr);
+            
+            // if (leaf_nodes)
+            //     std::cout << "set slot: " << leaf_nodes[start_pos + i]->get_Slot()->leaf_number << std::endl;
         }
         // do_flush(inner_slots, block_number * BLOCK_SIZE);
         // Build accelerator
@@ -127,13 +139,13 @@ public:
             serializeInnerSlot(inner_slots[i], buffer);
 
             if (inner_slots[i].type() && inner_slots[i].min_key != FREE_FLAG) {  // 如果是内部节点
-                std::cout << "inner node: " << i << std::endl;
-                std::cout << "serializeInnerNode recursively " << std::endl;
+                // std::cout << "inner node: " << i << std::endl;
+                // std::cout << "serializeInnerNode recursively " << std::endl;
                 reinterpret_cast<InnerNode*>(inner_slots[i].ptr)->serializeInnerNode(buffer);
             }
         }
 
-        std::cout << "serialize offset: " << buffer.size() << std::endl;
+        // std::cout << "serialize offset: " << buffer.size() << std::endl;
     }
 
     void deserializeInnerNode(const std::vector<char>& buffer, size_t& offset) {
@@ -171,10 +183,10 @@ public:
             deserializeInnerSlot(inner_slots[i], buffer, offset);
 
             if (inner_slots[i].type() && inner_slots[i].min_key != FREE_FLAG) {
-                 std::cout << "deserialize recursively" << std::endl;
+                //  std::cout << "deserialize recursively" << std::endl;
                     uint32_t block_number;
                     memcpy(&block_number, buffer.data() + offset + 12, sizeof(block_number));
-                    std::cout << "block number: " << block_number << std::endl;
+                    // std::cout << "block number: " << block_number << std::endl;
 
                     uint64_t node_size_in_byte = block_number * BLOCK_SIZE + NODE_HEADER_SIZE;
                     void* allocated_memory = malloc(node_size_in_byte);
@@ -182,7 +194,7 @@ public:
             }
         }
 
-        std::cout << "deserialize offset: " << offset << std::endl;
+        // std::cout << "deserialize offset: " << offset << std::endl;
     }
 
     InnerSlot * get_Slot (uint64_t slot) {
@@ -256,7 +268,7 @@ public:
     }
 
     // Upsert new nodes
-    uint32_t upsert_node (InnerSlot& node, InnerSlot * accelerator) {
+    uint32_t upsert_node (InnerSlot& node, InnerSlot * accelerator, LeafNode* leaf_node = nullptr, std::vector<InnerSlot* > *last_slots = nullptr) {
         uint32_t block_number = accelerator->block_number();
         uint64_t slot = predict_block(node.min_key, accelerator->slope, accelerator->intercept, block_number) * InnerSlotsPerBlock;
         uint64_t predicted_slot = slot;
@@ -273,13 +285,18 @@ public:
             --slot;
         }
         if (inner_slots[slot].type()) {
-            return reinterpret_cast<InnerNode*>(inner_slots[slot].ptr)->upsert_node(node, &inner_slots[slot]);
+            if (leaf_node)
+                return reinterpret_cast<InnerNode*>(inner_slots[slot].ptr)->upsert_node(node, &inner_slots[slot], leaf_node);
+            else
+                return reinterpret_cast<InnerNode*>(inner_slots[slot].ptr)->upsert_node(node, &inner_slots[slot], NULL);
         }
         // Upsert node
         else {
             if (inner_slots[slot].min_key == node.min_key) {
                 accelerator->get_lock();
                 inner_slots[slot] = node;
+                if (leaf_node)
+                    leaf_node->set_Slot(&(inner_slots[slot]));
                 //do_flush(&inner_slots[slot], sizeof(InnerSlot));
                 mfence();
                 accelerator->release_lock();
@@ -295,8 +312,30 @@ public:
                 while (inner_slots[--slot].min_key == FREE_FLAG) {}
                 for (++slot; slot > target_slot; --slot) {
                     inner_slots[slot] = inner_slots[slot - 1];
+                    // std::cout << "slot: " << slot << " target slot: " << target_slot << std::endl;
+
+                    if (last_slots && inner_slots[slot - 1].leaf_number != 10000) {
+                        // std::cout << "move leaf number: " << inner_slots[slot - 1].leaf_number << std::endl;
+                        last_slots->at(inner_slots[slot - 1].leaf_number) = &inner_slots[slot];
+                        
+                        
+                    }
+                    if (last_slots)
+                        reinterpret_cast<LeafNode* >(inner_slots[slot].ptr)->set_Slot(&inner_slots[slot]);
+
                 }
                 inner_slots[target_slot] = node;
+
+                // std::cout << std::endl;
+                // std::cout << "new node: " << node.leaf_number << std::endl;
+                // while(reinterpret_cast<LeafNode* >(inner_slots[target_slot].ptr)->get_next()->get_min_key() != FREE_FLAG)
+                // if (reinterpret_cast<LeafNode* >(inner_slots[target_slot].ptr)->get_next())
+                //     std::cout << "new node next: " << reinterpret_cast<LeafNode* >(inner_slots[target_slot].ptr)->get_next()->get_Slot()->leaf_number << std::endl;
+                // if (node.leaf_number != 10000) {
+                //         last_slots->at(node.leaf_number) = &inner_slots[target_slot];
+                // }
+                if (leaf_node)
+                    leaf_node->set_Slot(&(inner_slots[target_slot]));
                 //do_flush(&inner_slots[predicted_slot], InnerSlotsPerBlock * sizeof(InnerSlot));
                 mfence();
                 accelerator->release_lock();
@@ -308,11 +347,13 @@ public:
         }
     }
 
-    InnerSlot* data_placement (_key_t key, InnerSlot node) {
+    InnerSlot* data_placement (_key_t key, InnerSlot node, LeafNode* leaf_node = nullptr) {
         uint64_t slot = predict_block(key, inner_node.slope, inner_node.intercept, inner_node.block_number) * InnerSlotsPerBlock;
         for (uint32_t i = 0; i < InnerSlotsPerBlock; ++i) {
             if (inner_slots[slot + i].min_key == FREE_FLAG) {                
                 inner_slots[slot + i] = node;
+                if (leaf_node)
+                    leaf_node->set_Slot(&(inner_slots[slot + i]));
                 
                 return &inner_slots[slot + i];
             }
@@ -320,11 +361,15 @@ public:
         for (slot += InnerSlotsPerBlock; slot < inner_node.block_number * InnerSlotsPerBlock; slot++) {
             if (inner_slots[slot].min_key == FREE_FLAG) {                
                 inner_slots[slot] = node;
+                if (leaf_node)
+                    leaf_node->set_Slot(&(inner_slots[slot]));
                 
                 return &inner_slots[slot];
             }
         }
         assert(slot < inner_node.block_number * InnerSlotsPerBlock);
+        if (leaf_node)
+                leaf_node->set_Slot(&(inner_slots[slot]));
         return &inner_slots[slot];
     }
 

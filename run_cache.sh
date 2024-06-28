@@ -1,25 +1,16 @@
-start_time=$(date +%s)
+start_time=$(date +%s%3N)
 
 echo "Running script..."
 
-./test_client 8080 1e7 1e7 2 10000 &
-./test_client 8080 1e7 1e7 2 10000 &
-./test_client 8080 1e7 1e7 2 10000 &
-./test_client 8080 1e7 1e7 2 10000 &
-./test_client 8080 1e7 1e7 2 10000 &
-./test_client 8080 1e7 1e7 0 10000 &
-./test_client 8080 1e7 1e7 0 10000 &
-./test_client 8080 1e7 1e7 0 10000 &
-./test_client 8080 1e7 1e7 0 10000 &
-./test_client 8080 1e7 1e7 0 10000 
-
-
+./test_client --port=8080 --number=5e7 --test_size=5e7 --index_type=plin_cache --batch_size=10000 --key_distribution=lognormal --upsert_ratio=0 &
+./test_client --port=8080 --number=5e7 --test_size=5e7 --index_type=plin_cache --batch_size=10000 --key_distribution=lognormal --upsert_ratio=0 &
+./test_client --port=8080 --number=5e7 --test_size=5e7 --index_type=plin_cache --batch_size=10000 --key_distribution=lognormal --upsert_ratio=0 &
+./test_client --port=8080 --number=5e7 --test_size=5e7 --index_type=plin_cache --batch_size=10000 --key_distribution=lognormal --upsert_ratio=0 
 
 wait
 
-
-end_time=$(date +%s)
+end_time=$(date +%s%3N)
 
 duration=$((end_time - start_time))
 
-echo "Script completed in ${duration} seconds."
+echo "Script completed in ${duration} milliseconds."

@@ -424,7 +424,7 @@ public:
 
     // ret = 1 : update in a slot; ret = 2 : insert in a free slot; ret = 3 : update in overflow block; ret = 4 : insert in overflow block; 
     // ret = 5 : insert in overflow block & need to split; ret = 6 : insert in overflow block & need to split orphan node; ret = 7 : the node is locked
-    uint32_t upsert (_key_t key, _payload_t payload, uint32_t global_version, LeafNode*& leaf_to_split, const InnerSlot * accelerator = NULL) {
+    uint32_t upsert (_key_t key, _payload_t payload, uint32_t global_version, LeafNode*& leaf_to_split, const InnerSlot * accelerator = NULL, bool cache = false) {
 
         if (!check_read_lock(accelerator)) {
             
@@ -435,7 +435,20 @@ public:
         if (accelerator) {
             block = predict_block(key, accelerator->slope, accelerator->intercept, accelerator->block_number());
             if (block >= accelerator->block_number() - 3 && leaf_node.next && get_next()->get_min_key() <= key) {
-                return get_next()->upsert(key, payload, global_version, leaf_to_split);
+                // return get_next()->upsert(key, payload, global_version, leaf_to_split);
+                if (cache == false)
+                    return get_next()->upsert(key, payload, global_version, leaf_to_split);
+                else {
+                    if (get_next()->get_Slot() != nullptr) {
+                        // std::cout << "wrong !!!" << std::endl;
+                        // std::cout << "current leaf number: " << accelerator->leaf_number << " next leaf number: " << get_next()->get_Slot()->leaf_number << std::endl;
+                        accelerator = get_next()->get_Slot(); 
+                        return get_next()->upsert(key, payload, global_version, leaf_to_split, accelerator, true);
+                    }
+                    else
+                        return get_next()->upsert(key, payload, global_version, leaf_to_split, NULL, false); 
+                }
+                    
             }
             slot = block * LeafSlotsPerBlock;
         }
@@ -512,7 +525,7 @@ public:
                     }
                     else {
                         result.first->second = payload;
-                        // leaf_slots[slot].header.release_lock();
+                        leaf_slots[slot].header.release_lock();
                         flag = 3;  // Updated in overflow tree
                     }
                     

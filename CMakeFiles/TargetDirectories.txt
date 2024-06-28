@@ -1,4 +1,4 @@
-/home/hadoop/Desktop/PLIN/CMakeFiles/test_server.dir
-/home/hadoop/Desktop/PLIN/CMakeFiles/test_client.dir
-/home/hadoop/Desktop/PLIN/CMakeFiles/edit_cache.dir
-/home/hadoop/Desktop/PLIN/CMakeFiles/rebuild_cache.dir
+/home/furui/Desktop/PLIN/CMakeFiles/test_server.dir
+/home/furui/Desktop/PLIN/CMakeFiles/test_client.dir
+/home/furui/Desktop/PLIN/CMakeFiles/edit_cache.dir
+/home/furui/Desktop/PLIN/CMakeFiles/rebuild_cache.dir

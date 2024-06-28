@@ -9,10 +9,13 @@
 
 class Client_message {
 public:
-    enum Type { META, LOOKUP, INSERT, INVALID, RAW_KEY, RAW_INSERT };
+    enum Type { META, LOOKUP, RANGE, INSERT, INVALID, RAW_KEY, RAW_RANGE, RAW_INSERT, 
+        BTree_lookup, BTree_upsert, BTree_RANGE, ALEX_lookup, ALEX_upsert, ALEX_RANGE, 
+        BPtree_lookup, BPtree_upsert, BPtree_RANGE };
 
     Type type;
     std::vector<_key_t> keys;
+    std::vector<_key_t> upper_keys;
     std::vector<_payload_t> payloads;
     std::vector<int> leaf_paths;
     size_t batch_size;
@@ -33,10 +36,15 @@ public:
     //                 payloads(batch_size), leaf_paths(batch_size) {}
 
     Client_message(Type t = META , size_t batch_size = 1) 
-        : type(t), batch_size(batch_size), keys(batch_size), payloads(batch_size), leaf_paths(batch_size) {}
+        : type(t), batch_size(batch_size), keys(batch_size), upper_keys(batch_size), payloads(batch_size), leaf_paths(batch_size) {}
 
     Client_message(const std::vector<_key_t>& keys, size_t batch_size)
         : Client_message(RAW_KEY, batch_size) {
+        this->keys = keys;
+    }
+
+    Client_message(Type t, const std::vector<_key_t>& keys, size_t batch_size)
+        : Client_message(t, batch_size) {
         this->keys = keys;
     }
 
@@ -44,6 +52,19 @@ public:
         : Client_message(LOOKUP, batch_size) {
         this->keys = keys;
         this->leaf_paths = paths;
+    }
+
+    Client_message(const std::vector<int>& paths, const std::vector<_key_t>& lower_keys, const std::vector<_key_t>& upper_keys, size_t batch_size)
+        : Client_message(RANGE, batch_size) {
+        this->keys = lower_keys;
+        this->upper_keys = upper_keys;
+        this->leaf_paths = paths;
+    }
+
+    Client_message(const std::vector<_key_t>& lower_keys, const std::vector<_key_t>& upper_keys, size_t batch_size)
+        : Client_message(RAW_RANGE, batch_size) {
+        this->keys = lower_keys;
+        this->upper_keys = upper_keys;
     }
 
     Client_message(const std::vector<_key_t>& keys, const std::vector<_payload_t>& payloads, 
@@ -60,6 +81,18 @@ public:
         this->payloads = payloads;
     }
 
+    Client_message(Type t, const std::vector<_key_t>& keys, const std::vector<_payload_t>& payloads, size_t batch_size)
+        : Client_message(t, batch_size) {
+        this->keys = keys;
+        this->payloads = payloads;
+    }
+
+    Client_message(Type t, const std::vector<_key_t>& lower_keys, const std::vector<_key_t>& upper_keys, size_t batch_size)
+        : Client_message(t, batch_size) {
+        this->keys = lower_keys;
+        this->upper_keys = upper_keys;
+    }
+
     ~Client_message() {}  
 
     // 确保默认拷贝和移动构造函数和赋值操作符不被删除
@@ -74,6 +107,7 @@ public:
         content.write(reinterpret_cast<const char*>(&batch_size), sizeof(size_t));
 
         content.write(reinterpret_cast<const char*>(keys.data()), sizeof(_key_t) * batch_size);
+        content.write(reinterpret_cast<const char*>(upper_keys.data()), sizeof(_key_t) * batch_size);
         content.write(reinterpret_cast<const char*>(payloads.data()), sizeof(_payload_t) * batch_size);
         content.write(reinterpret_cast<const char*>(leaf_paths.data()), sizeof(int) * batch_size );
 
@@ -108,10 +142,12 @@ public:
         // std::cout << "level: " << level << std::endl;
 
         std::vector<_key_t> keys(batch_size);
+        std::vector<_key_t> upper_keys(batch_size);
         std::vector<_payload_t> payloads(batch_size);
         std::vector<int> leaf_paths(batch_size);
 
         ss.read(reinterpret_cast<char*>(keys.data()), sizeof(_key_t) * batch_size);
+        ss.read(reinterpret_cast<char*>(upper_keys.data()), sizeof(_key_t) * batch_size);
         ss.read(reinterpret_cast<char*>(payloads.data()), sizeof(_payload_t) * batch_size);
         ss.read(reinterpret_cast<char*>(leaf_paths.data()), sizeof(int) * batch_size);
 
@@ -125,6 +161,7 @@ public:
 
         Client_message msg(t, batch_size);
         msg.keys = std::move(keys);
+        msg.upper_keys = std::move(upper_keys);
         msg.payloads = std::move(payloads);
         msg.leaf_paths = std::move(leaf_paths);
 
